@@ -842,7 +842,8 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
         <input type="text" id="setDomain" placeholder="브이월드에 등록한 서비스 URL">
       </div>
       <p class="help">지적도는 브이월드 키에 등록한 서비스 URL과 같아야 나옵니다. 비워 두면 지금 주소를 씁니다.</p>
-      <div class="row"><button class="btn" id="btnWmsTest">지적도 시험 (새 창)</button></div>
+      <div class="row"><button class="btn" id="btnTileTest">위성지도 시험 (새 창)</button><button class="btn" id="btnWmsTest">지적도 시험 (새 창)</button></div>
+      <p class="help" id="keyInfo"></p>
       <p class="help">파일에 '원점' 열이 있으면 그 값을 먼저 씁니다. 좌표는 세계측지계(GRS80) 기준입니다. 브이월드 키가 없으면 일반 지도로 보입니다.</p>
       <div class="row"><button class="btn" id="btnSaveSet">설정 저장</button></div>
     </div>
@@ -1446,6 +1447,14 @@ $("btnShare").onclick = async () => {
 };
 
 // ───────── 설정·초기화 ─────────
+// 위성지도 한 장을 새 창으로 직접 요청 → 사진이 보이면 키 정상, 글자가 보이면 브이월드가 거절한 이유
+$("btnTileTest").onclick = () => {
+  const k = $("setKey").value.trim(); if (!k) { toast("브이월드 키를 먼저 넣어 주세요"); return; }
+  const c = map.getCenter(), z = 12, n = 2 ** z;
+  const x = Math.floor((c.lng + 180) / 360 * n), r = c.lat * Math.PI / 180;
+  const y = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n);
+  window.open(`https://api.vworld.kr/req/wmts/1.0.0/${encodeURIComponent(k)}/Satellite/${z}/${y}/${x}.jpeg`, "_blank");
+};
 $("btnWmsTest").onclick = () => {
   const k = $("setKey").value.trim(); if (!k) { toast("브이월드 키를 먼저 넣어 주세요"); return; }
   set.key = k; set.domain = $("setDomain").value.trim();
@@ -1456,7 +1465,8 @@ $("btnWmsTest").onclick = () => {
   window.open("https://api.vworld.kr/req/wms?" + q.toString(), "_blank");
 };
 $("btnSaveSet").onclick = async () => {
-  set.origin = $("setOrigin").value; set.key = $("setKey").value.trim(); set.domain = $("setDomain").value.trim();
+  set.origin = $("setOrigin").value; set.key = $("setKey").value.trim() || CFG.key; set.domain = $("setDomain").value.trim() || CFG.domain;
+  $("setKey").value = set.key;
   await DB.set("set", set); buildLayers(); toast("설정을 저장했습니다");
 };
 $("btnReset").onclick = async () => {
@@ -1474,6 +1484,7 @@ $("btnReset").onclick = async () => {
     if (!set.key) set.key = CFG.key;
     if (!set.domain) set.domain = CFG.domain;
   } catch (e) { toast("휴대폰 저장소를 열지 못했습니다 : " + e.message, 5000); }
+  $("keyInfo").textContent = CFG.key ? (set.key === CFG.key ? "공용 키(config.js)를 쓰는 중입니다." : "이 휴대폰에서 직접 넣은 키를 쓰는 중입니다. 칸을 비우고 저장하면 공용 키(config.js)로 돌아갑니다.") : "config.js 공용 키가 없습니다.";
   $("setOrigin").value = set.origin; $("setKey").value = set.key; $("setDomain").value = set.domain || "";
   buildLayers(); drawPoints(); fitAll(); startGPS();
   // 예전 버전에서 불러온 자료면 (폐기 점이 빠져 있음) 다시 불러오라고 알림
