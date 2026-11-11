@@ -893,7 +893,7 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
       <p class="help">이 휴대폰에 저장된 모든 작업(점·조사기록·사진)을 지웁니다. 작업 하나만 지우려면 위 작업 목록의 '삭제'를 쓰세요.</p>
       <div class="row"><button class="btn" id="btnReset" style="color:var(--red)">전체 지우기</button></div>
     </div>
-    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.11 17:44</p>
+    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.11 20:23</p>
   </div>
 </div>
 
@@ -1093,7 +1093,7 @@ function renderProjects() {
 const rec = (id) => S.recs[id] || (S.recs[id] = { status: "미조사", memo: "", time: "", gps: null, photos: [] });
 
 // ───────── 지도 ─────────
-const map = L.map("map", { zoomControl: false, attributionControl: true }).setView([36.576, 128.505], 9);
+const map = L.map("map", { zoomControl: false, attributionControl: true, maxZoom: 22 }).setView([36.576, 128.505], 9);
 let base = {};
 function buildLayers() {
   Object.values(base).forEach(l => map.removeLayer(l));
@@ -1101,12 +1101,12 @@ function buildLayers() {
   base = {};
   if (k) {
     // referrerPolicy "no-referrer" : PC에서 파일로 열 때(주소 정보 없이 요청)처럼 보내 브이월드 주소 검사에 덜 걸리게
-    const VW = { maxZoom: 19, attribution: "브이월드", referrerPolicy: "no-referrer" };
+    const VW = { maxZoom: 22, maxNativeZoom: 19, attribution: "브이월드", referrerPolicy: "no-referrer" };
     base["브이월드 위성"] = watchTiles(L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${k}/Satellite/{z}/{y}/{x}.jpeg`, VW), "위성");
     base["브이월드 일반"] = watchTiles(L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${k}/Base/{z}/{y}/{x}.png`, VW), "일반");
-    base["지적도"] = L.tileLayer.wms("https://api.vworld.kr/req/wms", Object.assign({}, WMS_OPT(), { maxZoom: 21, minZoom: 15, attribution: "브이월드 연속지적도", referrerPolicy: "no-referrer" }));
+    base["지적도"] = L.tileLayer.wms("https://api.vworld.kr/req/wms", Object.assign({}, WMS_OPT(), { maxZoom: 22, minZoom: 15, attribution: "브이월드 연속지적도", referrerPolicy: "no-referrer" }));
   }
-  base["일반지도(OSM)"] = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" });
+  base["일반지도(OSM)"] = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 22, maxNativeZoom: 19, attribution: "© OpenStreetMap" });
   layerIdx = 0; applyLayer();
 }
 // 브이월드 연속지적도 WMS : 좌표계는 EPSG:900913(=3857) 이름으로 요청, domain은 키 등록 URL
@@ -1118,7 +1118,12 @@ const WMS_OPT = () => ({ layers: "lp_pa_cbnd_bubun,lp_pa_cbnd_bonbun", styles: "
 function watchTiles(layer, label) {
   let ok = 0, bad = 0, told = false;
   layer.on("tileload", () => ok++);
-  layer.on("tileerror", () => {
+  layer.on("tileerror", (e) => {
+    // 이 지역에 19단계 사진이 없으면 18단계 사진을 늘려 쓰도록 낮춤 (한 단계씩)
+    const z = e.coords && e.coords.z;
+    if (ok && z && z >= 18 && z === layer.options.maxNativeZoom && layer.options.maxNativeZoom > 16) {
+      layer.options.maxNativeZoom = z - 1; layer.redraw(); return;
+    }
     bad++;
     if (!told && !ok && bad >= 6) {
       told = true;
