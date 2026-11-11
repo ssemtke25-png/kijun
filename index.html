@@ -728,6 +728,11 @@ textarea{width:100%;min-height:62px;border:1px solid var(--line);border-radius:1
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ph .x{position:absolute;top:3px;right:3px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:14px;line-height:24px;padding:0}
 .ph input{position:absolute;inset:0;opacity:0}
+.stake{display:none;margin-top:8px;background:#0F1B3D;color:#fff;border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.6}
+.stake b{font-size:18px}.stake small{opacity:.75}
+.hist{margin-top:8px;display:flex;flex-direction:column;gap:5px}
+.hist button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 10px;font-size:13px;text-align:left}
+.hist button.on{border:2px solid var(--navy);font-weight:700}
 .gpsrec{font-size:12px;color:var(--mut);margin-top:4px}
 /* 전체 화면 패널 */
 .panel{position:fixed;inset:0;z-index:1200;background:var(--bg);display:none;flex-direction:column}
@@ -798,8 +803,13 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
     <button class="btn" id="pHere">📍 위치 기록</button>
   </div>
   <div class="gpsrec" id="pGpsRec"></div>
+  <div id="pStake" class="stake"></div>
+  <div class="row" style="margin-top:6px"><button class="btn" id="pMeas">📐 실측 (10초 평균)</button></div>
+  <div class="gpsrec" id="pMeasRec"></div>
+  <div id="pStatBox">
   <div class="lbl">조사 결과 <span style="font-weight:400;color:var(--mut)">(완전·망실은 시스템 양식에 반영)</span></div>
   <div class="stat" id="pStat"></div>
+  </div>
   <div class="lbl">사진 <span style="font-weight:400;color:var(--mut)">(점 이름이 붙어 저장됩니다 · 얼굴·번호판·보안시설은 크게 찍히지 않게)</span></div>
   <div class="photos" id="pPhotos"></div>
   </div>
@@ -847,7 +857,11 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
         <input type="text" id="setKey" placeholder="인증키 (위성·지적도)">
         <span>키 등록 URL</span>
         <input type="text" id="setDomain" placeholder="브이월드에 등록한 서비스 URL">
+        <span>허용 편차(m)</span>
+        <input type="text" id="setTol" inputmode="decimal" placeholder="예) 0.03  (비우면 판정 안 함)">
       </div>
+      <div class="row"><button class="btn" data-tol="0.03">재조사 3cm</button><button class="btn" data-tol="0.10">확정측량 10cm</button><button class="btn" data-tol="">판정 안 함</button></div>
+      <p class="help">허용 편차를 넣으면 실측 결과가 그 안이면 초록, 넘으면 빨강으로 표시합니다. RTK 장비 위치가 들어올 때만 의미가 있습니다.</p>
       <p class="help">지적도는 브이월드 키에 등록한 서비스 URL과 같아야 나옵니다. 비워 두면 지금 주소를 씁니다.</p>
       <div class="row"><button class="btn" id="btnTileTest">위성지도 시험 (새 창)</button><button class="btn" id="btnWmsTest">지적도 시험 (새 창)</button></div>
       <p class="help" id="keyInfo"></p>
@@ -930,7 +944,9 @@ const STATUS = [
 ];
 const SLOTS = ["원경", "근경", "추가"];   // 추가는 여러 장
 const SYS_STATUS = ["완전", "망실"];   // 시스템에 다시 올릴 수 있는 값
-const HEX = Object.fromEntries(STATUS.map(s => [s.k, s.hex]));
+const HEX = Object.assign(Object.fromEntries(STATUS.map(s => [s.k, s.hex])), { "적합": "#2E9E6B", "초과": "#E5484D" });
+const INSP_ST = ["미조사", "적합", "초과"];   // 검사 모드 상태 (미조사 = 미측정)
+const stLabel = (k) => S.mode === "insp" && k === "미조사" ? "미측정" : k;
 
 // ───────── 좌표계 (세계측지계 GRS80 TM) ─────────
 const TM = (lon0) => `+proj=tmerc +lat_0=38 +lon_0=${lon0} +k=1 +x_0=200000 +y_0=600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs`;
@@ -984,7 +1000,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&l
 let toastT;
 function toast(m, ms = 2200) { const t = $("toast"); t.textContent = m; t.style.display = "block"; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = "none", ms); }
 const safeName = (s) => String(s).replace(/[\\/:*?"<>|\s]+/g, "_").replace(/^_+|_+$/g, "") || "점";
-function fmtDist(m) { return m == null ? "" : m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(2)}km`; }
+function fmtDist(m) { return m == null ? "" : m < 1 ? `${Math.round(m * 100)}cm` : m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(2)}km`; }
 function dirName(b) { return ["북", "북동", "동", "남동", "남", "남서", "서", "북서"][Math.round(((b % 360) + 360) % 360 / 45) % 8]; }
 function haversine(a, b) {
   const R = 6371000, r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLon = (b.lon - a.lon) * r;
@@ -1002,7 +1018,7 @@ const nowStr = () => { const d = new Date(), p = n => String(n).padStart(2, "0")
 let S = { title: "기준점 조사", cols: [], points: [], recs: {} };   // recs[id] = {status, memo, time, gps, photos:[{key,slot,name}]}
 // 브이월드 키 : 휴대폰에서 직접 넣은 키 > config.js의 공용 키
 const CFG = { key: (window.VWORLD_KEY || "").trim(), domain: (window.VWORLD_DOMAIN || "").trim() };
-let set = { origin: "EPSG:5187", key: CFG.key, domain: CFG.domain };
+let set = { origin: "EPSG:5187", key: CFG.key, domain: CFG.domain, tol: "" };
 let me = null, cur = null, filter = "전체";
 // 조사 작업 : 파일을 불러올 때마다 작업 하나가 생기고, 작업마다 따로 자동 저장 (덮어쓰지 않음)
 //   kv "projects" = [{id, title, created, updated, done, total}], kv "proj:<id>" = S, kv "cur" = 지금 작업 id
@@ -1133,6 +1149,9 @@ function updateProg() {
   const mp = S.points.filter(onMap), done = mp.filter(p => rec(p.id).status !== "미조사").length;
   $("prog").textContent = `${done} / ${mp.length}`;
   $("legend").style.display = S.points.length ? "" : "none";
+  $("legend").innerHTML = S.mode === "insp"
+    ? `<div><i class="lg hol" style="border-color:#7C8AA5"></i>미측정 <small>(검사 ${mp.length}점 · 허용 ±${S.tol}m)</small></div><div><i class="lg" style="background:#2E9E6B"></i>적합 <i class="lg" style="background:#E5484D;margin-left:6px"></i>초과</div>`
+    : `<div><i class="lg hol" style="border-color:#2E9E6B"></i><i class="lg hol dash" style="border-color:#E5484D"></i>조사 전 <small>(테두리 = 지난 결과 : 초록 완전 · 빨강 망실)</small></div><div><i class="lg" style="background:#2E9E6B"></i><i class="lg" style="background:#E5484D"></i><i class="lg" style="background:#F28C28"></i>이번 조사 <small>(완전 · 망실 · 확인필요)</small></div>`;
   $("ttl").innerHTML = `${esc(S.title)}`;
   $("empty").style.display = S.points.length ? "none" : "block";
 }
@@ -1154,16 +1173,23 @@ $("fviewX").onclick = () => { setFilter("전체"); fitAll(); };
 
 // ───────── GPS ─────────
 let meDot, meCirc, follow = false;
+const measFns = new Set();   // 실측 중일 때 위치를 받는 함수
+const fmtAcc = (a) => a < 1 ? `${(a * 100).toFixed(0)}cm` : `${a < 10 ? a.toFixed(1) : Math.round(a)}m`;
+const fm = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(Math.abs(v) < 10 ? 3 : 2)}m`;
+// 위경도 → 그 점의 원점 기준 지적 좌표 (X=북, Y=동)
+const CODE_OF = { "서부원점": "EPSG:5185", "중부원점": "EPSG:5186", "동부원점": "EPSG:5187", "동해원점": "EPSG:5188" };
+function llToTM(lat, lon, originName) { const [Y, X] = proj4("EPSG:4326", CODE_OF[originName] || set.origin, [lon, lat]); return { X, Y }; }
 function startGPS() {
   if (!navigator.geolocation) { $("gps").textContent = "GPS 지원 안 됨"; return; }
   navigator.geolocation.watchPosition(pos => {
-    me = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy };
+    me = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy, t: pos.timestamp || Date.now() };
     const ll = [me.lat, me.lon];
     if (!meDot) {
       meCirc = L.circle(ll, { radius: me.acc, weight: 1, color: "#2F80ED", fillColor: "#2F80ED", fillOpacity: .12 }).addTo(map);
       meDot = L.circleMarker(ll, { radius: 7, weight: 3, color: "#fff", fillColor: "#2F80ED", fillOpacity: 1 }).addTo(map);
     } else { meDot.setLatLng(ll); meCirc.setLatLng(ll).setRadius(me.acc); }
-    $("gps").innerHTML = `GPS 정확도 <b>±${Math.round(me.acc)}m</b>`;
+    $("gps").innerHTML = `${me.acc < 1 ? "RTK " : "GPS "}정확도 <b>±${fmtAcc(me.acc)}</b>`;
+    for (const f of measFns) f(me);
     if (follow) map.panTo(ll);
     if (cur) showDist();
   }, err => { $("gps").textContent = err.code === 1 ? "위치 권한을 허용해 주세요" : "GPS 신호 찾는 중"; },
@@ -1182,7 +1208,64 @@ function showDist() {
   if (!me) { $("pDist").textContent = "내 위치를 찾는 중…"; return; }
   const d = haversine(me, p);
   $("pDist").textContent = d < Math.max(me.acc, 5) ? `거의 다 왔습니다 (${fmtDist(d)})` : `${dirName(bearing(me, p))}쪽 ${fmtDist(d)}`;
+  // 30m 안으로 들어오면 성과 좌표 기준으로 어느 쪽으로 몇 cm 가야 하는지 (지적 좌표로 계산)
+  const box = $("pStake");
+  if (d <= 30 && isFinite(p.X)) {
+    const m = llToTM(me.lat, me.lon, p.originName), dN = p.X - m.X, dE = p.Y - m.Y;
+    box.style.display = "block";
+    box.innerHTML = `점까지 <b>${dN >= 0 ? "북" : "남"} ${Math.abs(dN).toFixed(2)}m · ${dE >= 0 ? "동" : "서"} ${Math.abs(dE).toFixed(2)}m</b><br>
+      <small>지금 위치 X ${m.X.toFixed(3)} · Y ${m.Y.toFixed(3)} · 정확도 ±${fmtAcc(me.acc)}${me.acc >= 1 ? " (휴대폰 GPS라 참고용)" : ""}</small>`;
+  } else box.style.display = "none";
 }
+// 📐 실측 : 10초 동안 받은 위치를 평균 내서 성과와 비교 (RTK 장비면 cm 단위)
+let measuring = false;
+$("pMeas").onclick = () => {
+  if (measuring) return;
+  const id = cur, p = P(id); if (!p || !isFinite(p.X)) return;
+  if (!me) { toast("아직 내 위치를 못 찾았습니다"); return; }
+  measuring = true; const got = []; let left = 10;
+  const btn = $("pMeas"); btn.textContent = `📐 실측 중… ${left}초 (점 위에 그대로)`;
+  const fn = () => {}; got.push({ ...me });
+  const t = setInterval(() => {
+    left--; btn.textContent = `📐 실측 중… ${left}초 (점 위에 그대로)`;
+    got.push({ ...me });   // 1초마다 지금 위치를 한 번씩 받아 둠 (위치가 그대로여도)
+    if (left > 0) return;
+    clearInterval(t); measFns.delete(fn); measuring = false; btn.textContent = S.mode === "insp" ? `📐 검사 실측 (10초 평균 · 허용 ±${S.tol}m)` : "📐 실측 (10초 평균)";
+    const lat = got.reduce((a, g) => a + g.lat, 0) / got.length, lon = got.reduce((a, g) => a + g.lon, 0) / got.length;
+    const acc = got.reduce((a, g) => a + g.acc, 0) / got.length, m = llToTM(lat, lon, p.originName);
+    const fixes = new Set(got.map(g => g.t)).size;
+    const dX = m.X - p.X, dY = m.Y - p.Y;
+    const nm = { X: +m.X.toFixed(4), Y: +m.Y.toFixed(4), dX: +dX.toFixed(4), dY: +dY.toFixed(4), d: +Math.hypot(dX, dY).toFixed(4), acc, n: got.length, fixes, time: nowStr() };
+    // 다시 찍으면 지난 실측은 이력으로 남기고, 가장 최근 것을 채택 (카드에서 다른 회차로 바꿀 수 있음)
+    const rr = rec(id); rr.measAll = rr.measAll || (rr.meas ? [rr.meas] : []); rr.measAll.push(nm); rr.meas = nm;
+    if (S.mode === "insp") rr.status = judgeOf(nm) ? "적합" : "초과";
+    rr.time = nowStr(); saveNow(); drawPoints(); if (cur === id) { showMeas(); if (markers[id]) markers[id].setStyle(styleFor(P(id), true)); }
+    toast(S.mode === "insp" ? `연결교차 ${Math.hypot(dX, dY).toFixed(4)}m → ${rec(id).status}` : `실측 완료 : 편차 ${Math.hypot(dX, dY).toFixed(3)}m`, 3500);
+  }, 1000);
+};
+function showMeas() {
+  const r = rec(cur), m = r.meas, el = $("pMeasRec");
+  if (!m) { el.innerHTML = ""; return; }
+  const tl = S.mode === "insp" ? S.tol : set.tol, ins = S.mode === "insp";
+  const j = judgeOf(m), judge = j === null ? "" : j ? ` <b style="color:#2E9E6B">${ins ? "적합" : "허용 범위 안"} (±${tl}m)</b>` : ` <b style="color:#E5484D">${ins ? "초과" : "허용 초과"} (±${tl}m)</b>`;
+  el.innerHTML = ins ? `검사 ${esc(m.time)} : △X ${fm(-m.dX)} · △Y ${fm(-m.dY)} <small>(성과−검사)</small> · 연결교차 <b>${m.d.toFixed(4)}m</b>${judge}<br>`
+    : `실측 ${esc(m.time)} : ΔX ${fm(m.dX)} · ΔY ${fm(m.dY)} · 편차 <b>${m.d.toFixed(3)}m</b>${judge}<br>`;
+  el.innerHTML += `실측 X ${m.X.toFixed(3)} · Y ${m.Y.toFixed(3)} · 정확도 ±${fmtAcc(m.acc)} · ${m.n}회 평균${m.fixes && m.fixes < 3 ? " (위치 갱신이 적음)" : ""}${m.acc >= 1 ? " · 휴대폰 GPS라 참고용" : ""}`;
+  const all = r.measAll || [];
+  if (all.length > 1) {
+    el.innerHTML += `<div class="hist"><b>실측 ${all.length}회</b> <small>(누르면 그 회차를 결과로 채택)</small>` + all.map((x, i) => {
+      const jj = judgeOf(x), on = x === m || (x.time === m.time && x.d === m.d);
+      return `<button data-adopt="${i}" class="${on ? "on" : ""}">${i + 1}회 ${x.time.slice(11)} · ${x.d.toFixed(ins ? 4 : 3)}m${jj === null ? "" : jj ? " ✔" : " ✖"}${on ? " · 채택" : ""}</button>`;
+    }).join("") + `</div>`;
+  }
+}
+$("pMeasRec").onclick = e => {
+  const i = e.target.closest("[data-adopt]"); if (!i || !cur) return;
+  const r = rec(cur), x = (r.measAll || [])[+i.dataset.adopt]; if (!x) return;
+  r.meas = x; if (S.mode === "insp") r.status = judgeOf(x) ? "적합" : "초과";
+  r.time = nowStr(); saveNow(); drawPoints(); showMeas(); renderList();
+  toast(`${+i.dataset.adopt + 1}회차를 결과로 채택했습니다`);
+};
 function openPoint(id, fly) {
   if (cur && markers[cur]) markers[cur].setStyle(styleFor(P(cur), false));
   cur = id; const p = P(id), r = rec(id);
@@ -1192,14 +1275,16 @@ function openPoint(id, fly) {
   $("pNoMap").style.display = p.noMap ? "" : "none";
   $("pNoMap").textContent = p.noMap ? `지도에 표시할 수 없는 점입니다 (${p.reason}). 목록에서 정보만 확인할 수 있고, 조사 결과는 원래 값 그대로 내보냅니다.` : "";
   $("pName").textContent = p.name; $("pType").textContent = p.type || "기준점"; $("pType").style.display = p.type ? "" : "none";
-  const xy = !p.noMap && isFinite(p.X) ? `X ${p.X.toLocaleString("ko-KR", {maximumFractionDigits: 2})} · Y ${p.Y.toLocaleString("ko-KR", {maximumFractionDigits: 2})} (${p.originName})` : "";
+  const fd = { maximumFractionDigits: S.mode === "insp" ? 4 : 2 }, xy = !p.noMap && isFinite(p.X) ? `${S.mode === "insp" ? "성과 " : ""}X ${p.X.toLocaleString("ko-KR", fd)} · Y ${p.Y.toLocaleString("ko-KR", fd)} (${p.originName})${S.mode === "insp" ? ` · 허용 ±${S.tol}m` : ""}` : "";
   $("pMeta").innerHTML = [p.addr && esc(p.addr), xy, p.no && `기준점번호 ${esc(p.no)}`,
     p.prevStat && `지난 조사 : <b>${esc(p.prevStat)}</b>${p.prevDate ? ` (${esc(ymdDot(p.prevDate))})` : ""}`].filter(Boolean).join("<br>");
   showDist();
   $("pStat").innerHTML = STATUS.map(s => `<button data-s="${s.k}" class="${r.status === s.k ? "on" : ""}" style="${r.status === s.k ? `background:${s.hex}` : ""}">${s.k}</button>`).join("");
   $("pMemo").value = r.memo || "";
-  $("pGpsRec").textContent = r.gps ? `기록한 현장 위치 : ${r.gps.lat.toFixed(6)}, ${r.gps.lon.toFixed(6)} (±${Math.round(r.gps.acc)}m, ${r.gps.time})` : "";
-  drawPhotos();
+  $("pGpsRec").textContent = r.gps ? `기록한 현장 위치 : ${r.gps.lat.toFixed(6)}, ${r.gps.lon.toFixed(6)} (±${fmtAcc(r.gps.acc)}, ${r.gps.time})` : "";
+  $("pStatBox").style.display = S.mode === "insp" ? "none" : "";
+  $("pMeas").textContent = S.mode === "insp" ? `📐 검사 실측 (10초 평균 · 허용 ±${S.tol}m)` : "📐 실측 (10초 평균)";
+  drawPhotos(); showMeas();
   $("sheet").classList.add("on"); openLayer("sheet");
 }
 function hideSheet() {
@@ -1234,7 +1319,7 @@ window.addEventListener("popstate", e => {
   lastBack = Date.now(); toast("뒤로 버튼을 한 번 더 누르면 앱이 닫힙니다", 2000);
   history.pushState({ d: 0 }, "");
 });
-function touch(id) { rec(id).time = nowStr(); saveS(); }
+function touch(id) { rec(id).time = nowStr(); saveNow(); }
 $("pStat").onclick = e => {
   const b = e.target.closest("button"); if (!b || !cur) return;
   rec(cur).status = b.dataset.s; touch(cur); drawPoints(); openPoint(cur); renderList();
@@ -1310,16 +1395,17 @@ function sortedPoints(withNoMap) {
 }
 function renderList() {
   const q = $("q").value.trim();
-  const counts = Object.fromEntries(STATUS.map(s => [s.k, 0])); S.points.filter(onMap).forEach(p => counts[rec(p.id).status]++);
+  const keys = S.mode === "insp" ? INSP_ST : STATUS.map(s => s.k);
+  const counts = Object.fromEntries(keys.map(k => [k, 0])); S.points.filter(onMap).forEach(p => counts[rec(p.id).status] = (counts[rec(p.id).status] || 0) + 1);
   const nNo = S.points.filter(p => p.noMap).length;
-  $("chips").innerHTML = ["전체", ...STATUS.map(s => s.k), ...(nNo ? ["좌표없음"] : [])].map(k =>
-    `<button data-f="${k}" class="${filter === k ? "on" : ""}">${k} ${k === "전체" ? S.points.length : k === "좌표없음" ? nNo : counts[k]}</button>`).join("");
+  $("chips").innerHTML = ["전체", ...keys, ...(nNo ? ["좌표없음"] : [])].map(k =>
+    `<button data-f="${k}" class="${filter === k ? "on" : ""}">${stLabel(k)} ${k === "전체" ? S.points.length : k === "좌표없음" ? nNo : counts[k]}</button>`).join("");
   const list = sortedPoints(true).filter(p => shown(p) && (!q || (p.name + " " + p.addr + " " + p.no).includes(q)));
   $("list").innerHTML = list.map(p => {
     const r = rec(p.id), d = me && !p.noMap ? haversine(me, p) : null;
     const dot = p.noMap ? `background:#fff;border:2px dashed ${prevHex(p.prevStat)}` : r.status === "미조사" ? `background:#fff;border:3px ${/망실/.test(p.prevStat) ? "dotted" : "solid"} ${prevHex(p.prevStat)}` : `background:${HEX[r.status]}`;
     return `<div class="li" data-id="${p.id}"${p.noMap ? ' style="opacity:.7"' : ""}><span class="dot" style="${dot}"></span>
-      <div class="t"><b>${esc(p.name)}</b><span>${p.noMap ? `지도 없음(${esc(p.reason)}) · ` : ""}${esc(p.addr)}${p.prevStat ? ` · 지난 ${esc(p.prevStat)}` : ""}${r.status !== "미조사" ? ` → 이번 ${esc(r.status)}` : ""}${r.photos.length ? ` · 사진 ${r.photos.length}` : ""}</span></div>
+      <div class="t"><b>${esc(p.name)}</b><span>${p.noMap ? `지도 없음(${esc(p.reason)}) · ` : ""}${esc(p.addr)}${p.prevStat ? ` · 지난 ${esc(p.prevStat)}` : ""}${r.status !== "미조사" ? ` → 이번 ${esc(r.status)}` : ""}${r.meas ? ` · ${S.mode === "insp" ? "연결교차" : "편차"} ${r.meas.d.toFixed(S.mode === "insp" ? 4 : 3)}m${judgeOf(r.meas) === null ? "" : judgeOf(r.meas) ? " ✔" : " ✖"}` : ""}${r.photos.length ? ` · 사진 ${r.photos.length}` : ""}</span></div>
       <span class="d">${d != null ? fmtDist(d) : ""}</span></div>`;
   }).join("") || `<p class="help" style="text-align:center">해당하는 점이 없습니다</p>`;
 }
@@ -1369,7 +1455,7 @@ async function readTable(file) {
   });
   const cols = aoa[hi].map((c, i) => String(c).trim() || `열${i + 1}`);
   const rows = aoa.slice(hi + 1).filter(r => r.some(c => String(c).trim() !== "")).map(r => Object.fromEntries(cols.map((c, i) => [c, r[i] ?? ""])));
-  return { cols, rows, sheet };
+  return { cols, rows, sheet, wb, buf };
 }
 function guess(cols) {
   const used = new Set(), m = {};
@@ -1385,6 +1471,8 @@ $("fileIn").onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   try {
     const t = await readTable(f);
+    const insp = /\.xlsx$/i.test(f.name) || /\.xls$/i.test(f.name) ? detectInsp(t.wb) : null;
+    if (insp) { pending = { insp, buf: t.buf, file: f.name }; showInspCard(insp, f.name); return; }
     if (!t.rows.length) { toast("읽을 줄이 없습니다"); return; }
     pending = { ...t, file: f.name };
     const g = guess(t.cols);
@@ -1401,6 +1489,7 @@ const ymd = (s) => String(s || "").replace(/\D/g, "").slice(0, 8);
 const ymdDot = (s) => { const d = ymd(s); return d.length === 8 ? `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6)}` : String(s || ""); };
 $("btnApply").onclick = async () => {
   if (!pending) return;
+  if (pending.insp) return applyInsp();
   const m = {}; $("colMap").querySelectorAll("select[data-k]").forEach(s => { if (s.value) m[s.dataset.k] = s.value; });
   if (!m.name || !((m.X && m.Y) || (m.lat && m.lon))) { toast("기준점명과 X·Y(또는 위도·경도) 열을 골라 주세요", 3500); return; }
   set.origin = $("impOrigin").value; $("setOrigin").value = set.origin;
@@ -1441,12 +1530,162 @@ $("btnApply").onclick = async () => {
     + (swapped ? ` · ${swapped}개는 X·Y가 바뀌어 있어 고쳐 읽음` : ""), 5000);
 };
 
+// ───────── 측량성과 검사 (측량성과비교표 양식) ─────────
+// 양식 : A 기준점번호 · B·C 측량성과(=MOD(입력,나눌값)) · D·E 검사측량성과 · F·G 오차량(=B−D, C−E) · H 연결교차(=√) · I 비고 · K·L 측량성과 입력
+// 앱이 실측한 값을 D·E에 채우고(F·G·H 계산값도 같이), 원래 양식 모양 그대로 돌려줌
+function detectInsp(wb) {
+  const flat = (v) => String(v ?? "").replace(/\s/g, "");
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name]; if (!ws || !ws["!ref"]) continue;
+    const rg = XLSX.utils.decode_range(ws["!ref"]);
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
+    const find = (re, r0 = 0, r1 = 20) => { for (let r = r0; r < Math.min(aoa.length, r1); r++) for (let c = 0; c < (aoa[r] || []).length; c++) if (re.test(flat(aoa[r][c]))) return { r, c }; return null; };
+    const inp = find(/측량성과입력/); if (!inp) continue;
+    const nc = find(/기준점번호|점번호|번호/) || { r: inp.r, c: 0 };
+    const chk = find(/검사측량성과|검사성과/), note = find(/비고/), err = find(/오차량/), cross = find(/연결교차/);
+    const div = find(/나눌값/);
+    let tol = 0.03;
+    for (let r = inp.r; r < inp.r + 2; r++) for (const v of aoa[r] || []) { const m = flat(v).match(/±([\d.]+)/); if (m) tol = parseFloat(m[1]); }
+    const modv = div ? num(aoa[div.r][div.c + 1]) || 0 : 0;
+    const col = (c) => XLSX.utils.encode_col(c + rg.s.c);
+    const rows = [];
+    for (let r = inp.r + 2; r < aoa.length; r++) {
+      const row = aoa[r] || [], id = String(row[nc.c] ?? "").trim(), X = num(row[inp.c]), Y = num(row[inp.c + 1]);
+      if (!id && !isFinite(X)) continue;
+      rows.push({ excelRow: r + rg.s.r + 1, name: id || `행${r + rg.s.r + 1}`, X, Y });
+    }
+    if (!rows.length) continue;
+    return { sheetName: name, tol, modv, rows,
+      cols: { chkX: chk ? col(chk.c) : null, chkY: chk ? col(chk.c + 1) : null, errX: err ? col(err.c) : null, errY: err ? col(err.c + 1) : null,
+              cross: cross ? col(cross.c) : null, note: note ? col(note.c) : null } };
+  }
+  return null;
+}
+function showInspCard(info, fileName) {
+  $("colMap").innerHTML = `<span>양식</span><b>측량성과비교표 (검사)</b>
+    <span>점 수</span><b>${info.rows.length}점 (${esc(info.rows[0].name)} ~ ${esc(info.rows[info.rows.length - 1].name)})</b>
+    <span>허용 범위</span><input type="text" id="impTol" inputmode="decimal" value="${info.tol}">
+    <span>원점</span><select id="impOrigin">${Object.entries(ORIGIN_NAME).map(([c, n]) => `<option value="${c}" ${set.origin === c ? "selected" : ""}>${n}</option>`).join("")}</select>`;
+  $("colHint").textContent = `${fileName} · 점마다 실측하면 연결교차를 바로 계산하고, 끝나면 이 양식의 검사측량성과 칸을 채워 돌려줍니다.`;
+  $("mapCard").style.display = "block"; $("mapCard").scrollIntoView({ behavior: "smooth" });
+}
+async function applyInsp() {
+  const info = pending.insp;
+  set.origin = $("impOrigin").value; $("setOrigin").value = set.origin;
+  const tol = parseFloat($("impTol").value) || info.tol;
+  const pts = [];
+  info.rows.forEach((r, i) => {
+    const base = { id: "p" + i, row: r.excelRow, name: r.name, no: "", type: "검사점", addr: "", prevStat: "", prevDate: "" };
+    const ll = r.X > 0 && r.Y > 0 ? tmToLL(r.X, r.Y, set.origin) : null;
+    if (!ll) pts.push(Object.assign(base, { noMap: true, reason: "좌표없음", X: r.X, Y: r.Y, originName: "", lat: null, lon: null }));
+    else pts.push(Object.assign(base, { X: ll.swapped ? r.Y : r.X, Y: ll.swapped ? r.X : r.Y, originName: ORIGIN_NAME[set.origin], lat: ll.lat, lon: ll.lon }));
+  });
+  if (!pts.some(onMap)) { toast("지도에 올릴 점이 없습니다. 원점을 확인해 주세요", 4000); return; }
+  await saveNow();
+  let title = pending.file.replace(/\.[^.]+$/, "");
+  if (projects.some(j => j.title === title)) title += ` (${nowStr().slice(5, 16)})`;
+  await newProject({ title, mode: "insp", tol, form: { bytes: pending.buf, sheetName: info.sheetName, cols: info.cols, modv: info.modv },
+    cols: [], rows: [], map: {}, points: pts, recs: {} });
+  await DB.set("set", set); setFilter("전체"); renderProjects();
+  $("mapCard").style.display = "none"; $("fileIn").value = "";
+  closeAll(() => { drawPoints(); fitAll(); }); drawPoints(); fitAll();
+  toast(`검사 ${pts.length}점을 올렸습니다 · 허용 ±${tol}m`, 4000);
+}
+const modOf = (v, m) => m > 0 ? ((v % m) + m) % m : v;
+// 원래 엑셀 파일을 열어 해당 칸만 바꿔 넣음 (서식·테두리·수식 그대로)
+async function patchInspForm(form, fills) {
+  const zip = await JSZip.loadAsync(form.bytes);
+  const P = (s) => new DOMParser().parseFromString(s, "application/xml");
+  const ser = (d) => { let x = new XMLSerializer().serializeToString(d); if (!x.startsWith("<?xml")) x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + x; return x; };
+  const wbx = P(await zip.file("xl/workbook.xml").async("string"));
+  const sh = [...wbx.getElementsByTagName("sheet")].find(e => e.getAttribute("name") === form.sheetName) || wbx.getElementsByTagName("sheet")[0];
+  const rid = sh.getAttribute("r:id") || sh.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+  const rels = P(await zip.file("xl/_rels/workbook.xml.rels").async("string"));
+  const tgt = [...rels.getElementsByTagName("Relationship")].find(e => e.getAttribute("Id") === rid).getAttribute("Target");
+  const path = tgt.startsWith("/") ? tgt.slice(1) : "xl/" + tgt.replace(/^\.\//, "");
+  const doc = P(await zip.file(path).async("string")), NS = doc.documentElement.namespaceURI;
+  const sd = doc.getElementsByTagName("sheetData")[0];
+  const colIdx = (ref) => XLSX.utils.decode_cell(ref).c;
+  function rowEl(n) {
+    let after = null;
+    for (const r of sd.getElementsByTagName("row")) { const k = +r.getAttribute("r"); if (k === n) return r; if (k > n) { after = r; break; } }
+    const r = doc.createElementNS(NS, "row"); r.setAttribute("r", n); sd.insertBefore(r, after); return r;
+  }
+  function cellEl(ref) {
+    const r = rowEl(XLSX.utils.decode_cell(ref).r + 1), ci = colIdx(ref); let after = null;
+    for (const c of r.getElementsByTagName("c")) { const k = colIdx(c.getAttribute("r")); if (k === ci) return c; if (k > ci) { after = c; break; } }
+    const c = doc.createElementNS(NS, "c"); c.setAttribute("r", ref); r.insertBefore(c, after); return c;
+  }
+  const setNum = (ref, v) => {   // 수식 칸이면 계산값만, 아니면 값 자체를 바꿈
+    const c = cellEl(ref), f = c.getElementsByTagName("f")[0];
+    if (!f) { while (c.firstChild) c.removeChild(c.firstChild); c.removeAttribute("t"); }
+    else { c.removeAttribute("t"); [...c.getElementsByTagName("v")].forEach(x => c.removeChild(x)); }
+    const ve = doc.createElementNS(NS, "v"); ve.textContent = String(v); c.appendChild(ve);
+  };
+  const setStr = (ref, s) => {
+    const c = cellEl(ref); while (c.firstChild) c.removeChild(c.firstChild);
+    c.setAttribute("t", "inlineStr"); const is = doc.createElementNS(NS, "is"), t = doc.createElementNS(NS, "t"); t.textContent = s; is.appendChild(t); c.appendChild(is);
+  };
+  const k = form.cols;
+  for (const f of fills) {
+    if (k.chkX) setNum(k.chkX + f.row, f.D); if (k.chkY) setNum(k.chkY + f.row, f.E);
+    if (k.errX) setNum(k.errX + f.row, f.F); if (k.errY) setNum(k.errY + f.row, f.G);
+    if (k.cross) setNum(k.cross + f.row, f.H);
+    if (k.note && f.note) setStr(k.note + f.row, f.note);
+  }
+  zip.file(path, ser(doc));
+  // 엑셀이 열 때 수식을 다시 계산하도록
+  let cp = wbx.getElementsByTagName("calcPr")[0];
+  if (!cp) { cp = wbx.createElementNS(wbx.documentElement.namespaceURI, "calcPr"); const after = wbx.getElementsByTagName("sheets")[0].nextSibling; const dn = wbx.getElementsByTagName("definedNames")[0]; wbx.documentElement.insertBefore(cp, dn ? dn.nextSibling : after); }
+  cp.setAttribute("fullCalcOnLoad", "1");
+  zip.file("xl/workbook.xml", ser(wbx));
+  return await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+}
+async function buildInspZip() {
+  toast("검사 결과 만드는 중…", 6000);
+  const zip = new JSZip(), dir = zip.folder("사진"), mv = S.form.modv || 0, tol = S.tol;
+  const fills = [], rows = [], hist = [];
+  for (const p of S.points) {
+    const r = rec(p.id), m = r.meas;
+    if (m) {
+      // 양식의 오차량 = 측량성과 − 검사측량성과. 나눌값(10) 경계를 넘어도 맞게 : D = MOD(성과) + (실측 − 성과)
+      const B = modOf(p.X, mv), C = modOf(p.Y, mv), D = +(B + m.dX).toFixed(4), E = +(C + m.dY).toFixed(4);
+      const F = +(B - D).toFixed(4), G = +(C - E).toFixed(4), H = +Math.hypot(F, G).toFixed(4);
+      fills.push({ row: p.row, D, E, F, G, H, note: H > tol ? `허용 초과(±${tol})` : "" });
+    }
+    rows.push({ "기준점번호": p.name, "성과X": p.X, "성과Y": p.Y, "실측X": m ? m.X : "", "실측Y": m ? m.Y : "",
+      "△X(성과−검사)": m ? +(-m.dX).toFixed(4) : "", "△Y(성과−검사)": m ? +(-m.dY).toFixed(4) : "", "연결교차": m ? m.d : "",
+      "판정": m ? (m.d <= tol ? `적합(±${tol})` : `초과(±${tol})`) : "미측정", "실측정확도(m)": m ? +m.acc.toFixed(3) : "", "평균횟수": m ? m.n : "",
+      "실측일시": m ? m.time : "", "실측횟수": (r.measAll || (m ? [m] : [])).length, "메모": r.memo || "", "사진파일": r.photos.map(x => x.name).join(", ") });
+    (r.measAll || (m ? [m] : [])).forEach((x, i) => hist.push({ "기준점번호": p.name, "회차": i + 1, "실측일시": x.time, "실측X": x.X, "실측Y": x.Y,
+      "△X(성과−검사)": +(-x.dX).toFixed(4), "△Y(성과−검사)": +(-x.dY).toFixed(4), "연결교차": x.d, "판정": x.d <= tol + 1e-9 ? "적합" : "초과",
+      "정확도(m)": +x.acc.toFixed(3), "채택": x === m || (m && x.time === m.time && x.d === m.d) ? "○" : "" }));
+    for (const ph of r.photos) { const b = await DB.pGet(ph.key); if (b) dir.file(ph.name, b); }
+  }
+  const d = new Date(), stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  const base = safeName(S.title);
+  try { zip.file(`${base}_검사결과_${stamp}.xlsx`, await patchInspForm(S.form, fills)); }
+  catch (e) { toast("원래 양식에 채우지 못했습니다 (" + e.message + "). 검사상세 파일을 쓰세요", 5000); }
+  const ws = XLSX.utils.json_to_sheet(rows); ws["!cols"] = Object.keys(rows[0]).map(k => ({ wch: /번호|일시|사진|메모|판정/.test(k) ? 16 : 12 }));
+  const done = rows.filter(r => r["판정"] !== "미측정");
+  const sum = [{ "구분": "전체", "점수": rows.length }, { "구분": "측정", "점수": done.length },
+    { "구분": `적합(±${tol})`, "점수": done.filter(r => r["판정"].startsWith("적합")).length },
+    { "구분": `초과(±${tol})`, "점수": done.filter(r => r["판정"].startsWith("초과")).length }, { "구분": "미측정", "점수": rows.length - done.length }];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "검사상세"); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sum), "집계");
+  if (hist.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hist), "실측이력");
+  zip.file(`${base}_검사상세_${stamp}.xlsx`, XLSX.write(wb, { bookType: "xlsx", type: "array" }));
+  const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+  const hm = `${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}`;
+  return { blob, name: `kijunjeom_insp_${stamp}_${hm}.zip` };
+}
+
 // ───────── 내보내기 (엑셀 + 사진 ZIP) ─────────
 // 1) 원래 양식 그대로 : 조사한 점만 최종조사내용·최종조사일자를 이번 결과로 바꿈 (폐기 등 나머지 줄은 그대로)
 // 2) 조사상세 : 메모·현장 위치·사진 파일 이름
 // 3) 상태별 집계
 async function buildZip() {
   if (!S.points.length) { toast("내보낼 점이 없습니다"); return null; }
+  if (S.mode === "insp") return buildInspZip();
   toast("ZIP 만드는 중…", 6000);
   const zip = new JSZip(), dir = zip.folder("사진");
   const m = S.map || {}, cols = S.cols.slice();
@@ -1469,7 +1708,9 @@ async function buildZip() {
       "현장위도": "", "현장경도": "", "GPS정확도(m)": "", "사진수": 0, "사진파일": "" }); continue; }
     rows.push({ "기준점번호": p.no, "종류": p.type, "기준점": p.name, "소재지": p.addr, "X": p.X, "Y": p.Y, "원점": p.originName,
       "지난조사": p.prevStat, "지난조사일자": p.prevDate, "이번조사": p.noMap ? `지도 없음(${p.reason})` : r.status, "조사일시": r.time, "메모": r.memo,
-      "현장위도": r.gps ? +r.gps.lat.toFixed(7) : "", "현장경도": r.gps ? +r.gps.lon.toFixed(7) : "", "GPS정확도(m)": r.gps ? Math.round(r.gps.acc) : "",
+      "현장위도": r.gps ? +r.gps.lat.toFixed(7) : "", "현장경도": r.gps ? +r.gps.lon.toFixed(7) : "", "GPS정확도(m)": r.gps ? +r.gps.acc.toFixed(3) : "",
+      "실측X": r.meas ? r.meas.X : "", "실측Y": r.meas ? r.meas.Y : "", "ΔX(m)": r.meas ? r.meas.dX : "", "ΔY(m)": r.meas ? r.meas.dY : "",
+      "편차(m)": r.meas ? r.meas.d : "", "판정": r.meas && judgeOf(r.meas) !== null ? (judgeOf(r.meas) ? `범위 안(±${set.tol}m)` : `초과(±${set.tol}m)`) : "", "실측정확도(m)": r.meas ? +r.meas.acc.toFixed(3) : "", "실측일시": r.meas ? r.meas.time : "",
       "사진수": r.photos.length, "사진파일": r.photos.map(x => x.name).join(", ") });
     for (const ph of r.photos) { const b = await DB.pGet(ph.key); if (b) dir.file(ph.name, b); }
   }
@@ -1480,6 +1721,14 @@ async function buildZip() {
   sum.push({ "상태": "소계(지도에 올린 점)", "개수": mp.length });
   sum.push({ "상태": "좌표 없음(폐기 등)", "개수": S.points.length - mp.length });
   sum.push({ "상태": "합계(파일 전체)", "개수": S.points.length });
+  const ms = mp.filter(p => rec(p.id).meas);
+  if (ms.length) {
+    sum.push({ "상태": "", "개수": "" }, { "상태": "실측한 점", "개수": ms.length });
+    if (judgeOf(rec(ms[0].id).meas) !== null) {
+      sum.push({ "상태": `허용 범위 안 (±${set.tol}m)`, "개수": ms.filter(p => judgeOf(rec(p.id).meas)).length });
+      sum.push({ "상태": `허용 초과 (±${set.tol}m)`, "개수": ms.filter(p => !judgeOf(rec(p.id).meas)).length });
+    }
+  }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, wsForm, (S.sheet || "원본양식").slice(0, 31));
   XLSX.utils.book_append_sheet(wb, ws, "조사상세");
@@ -1523,7 +1772,7 @@ $("btnWmsTest").onclick = () => {
   window.open("https://api.vworld.kr/req/wms?" + q.toString(), "_blank");
 };
 $("btnSaveSet").onclick = async () => {
-  set.origin = $("setOrigin").value; set.key = $("setKey").value.trim() || CFG.key; set.domain = $("setDomain").value.trim() || CFG.domain;
+  set.origin = $("setOrigin").value; set.key = $("setKey").value.trim() || CFG.key; set.domain = $("setDomain").value.trim() || CFG.domain; set.tol = $("setTol").value.trim();
   $("setKey").value = set.key;
   await DB.set("set", set); buildLayers(); toast("설정을 저장했습니다");
 };
@@ -1538,6 +1787,12 @@ $("projList").onclick = async e => {
 // 화면을 끄거나 앱을 내릴 때 바로 저장
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveNow(); });
 window.addEventListener("pagehide", () => saveNow());
+document.querySelectorAll("[data-tol]").forEach(b => b.onclick = async () => {
+  $("setTol").value = b.dataset.tol; set.tol = b.dataset.tol; await DB.set("set", set);
+  toast(b.dataset.tol ? `허용 편차 ${b.dataset.tol}m로 판정합니다` : "편차 판정을 끕니다"); if (cur) showMeas(); renderList();
+});
+// 실측 판정 : 허용 편차 안이면 true, 넘으면 false, 판정 안 하면 null
+function judgeOf(m) { const t = parseFloat(S.mode === "insp" ? S.tol : set.tol); return m && isFinite(t) && t > 0 ? m.d <= t + 1e-9 : null; }
 $("btnReset").onclick = async () => {
   if (!confirm("모든 작업의 점·조사기록·사진을 지울까요? 되돌릴 수 없습니다.")) return;
   await DB.clear(); await DB.set("set", set);
@@ -1562,7 +1817,7 @@ $("btnReset").onclick = async () => {
     if (!set.domain) set.domain = CFG.domain;
   } catch (e) { toast("휴대폰 저장소를 열지 못했습니다 : " + e.message, 5000); }
   $("keyInfo").textContent = CFG.key ? (set.key === CFG.key ? "공용 키(config.js)를 쓰는 중입니다." : "이 휴대폰에서 직접 넣은 키를 쓰는 중입니다. 칸을 비우고 저장하면 공용 키(config.js)로 돌아갑니다.") : "config.js 공용 키가 없습니다.";
-  $("setOrigin").value = set.origin; $("setKey").value = set.key; $("setDomain").value = set.domain || "";
+  $("setOrigin").value = set.origin; $("setKey").value = set.key; $("setDomain").value = set.domain || ""; $("setTol").value = set.tol || "";
   buildLayers(); drawPoints(); fitAll(); startGPS();
   // 예전 버전에서 불러온 자료면 (폐기 점이 빠져 있음) 다시 불러오라고 알림
   if (S.rows && S.points.length < S.rows.length)
