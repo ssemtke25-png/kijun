@@ -824,19 +824,16 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
   <div class="pbody">
     <div class="card">
       <h4>📁 조사 작업</h4>
-      <p class="help">불러온 파일마다 작업이 따로 저장됩니다. 조사하는 동안 자동 저장되고, 다른 파일을 불러와도 지난 작업은 그대로 남습니다.</p>
+      <p class="help">파일 하나가 작업 하나입니다. 하는 동안 자동 저장되고, 새 파일을 불러와도 지난 작업은 목록에 남습니다.</p>
       <div id="projList" style="margin-top:8px"></div>
-    </div>
-    <div class="card">
-      <h4>📂 좌표 파일 불러오기 (새 작업)</h4>
-      <p class="help">엑셀(xlsx·xls)이나 CSV. 첫 줄은 열 이름이어야 합니다. 열 이름은 자동으로 맞추고, 틀리면 아래에서 고칠 수 있습니다.</p>
-      <input type="file" id="fileIn" accept=".xlsx,.xls,.csv,.txt" style="margin-top:6px;width:100%">
+      <div class="row"><label class="btn pri" style="position:relative;text-align:center">＋ 새 작업 (기준점·검사 파일 불러오기)<input type="file" id="fileIn" accept=".xlsx,.xls,.csv,.txt" style="position:absolute;inset:0;opacity:0"></label></div>
+      <p class="help">지적_기준점 엑셀, 측량성과비교표, X·Y가 있는 아무 엑셀·CSV. 양식은 자동으로 알아봅니다.</p>
     </div>
     <div class="card" id="mapCard" style="display:none">
-      <h4>열 맞추기</h4>
+      <h4>새 작업 확인</h4>
       <div class="map2" id="colMap"></div>
       <p class="help" id="colHint"></p>
-      <div class="row"><button class="btn pri" id="btnApply">이대로 지도에 올리기</button></div>
+      <div class="row"><button class="btn pri" id="btnApply">이대로 새 작업 만들기</button><button class="btn" id="btnCancelImp">취소</button></div>
     </div>
     <div class="card">
       <h4>📡 GNSS 연결 (시험)</h4>
@@ -895,7 +892,7 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
       <p class="help">이 휴대폰에 저장된 모든 작업(점·조사기록·사진)을 지웁니다. 작업 하나만 지우려면 위 작업 목록의 '삭제'를 쓰세요.</p>
       <div class="row"><button class="btn" id="btnReset" style="color:var(--red)">전체 지우기</button></div>
     </div>
-    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.12 07:56</p>
+    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.12 08:00</p>
   </div>
 </div>
 
@@ -1071,7 +1068,7 @@ function renderProjects() {
         <span>조사 ${j.done || 0} / ${j.total || 0}점${j.all > j.total ? ` (전체 ${j.all})` : ""} · 만든 날 ${esc((j.created || "").slice(0, 10))} · 마지막 저장 ${esc((j.updated || "").slice(5))}</span></div>
       ${j.id === curProj ? "" : `<button class="btn" style="flex:none;padding:7px 12px" data-open="${j.id}">열기</button>`}
       <button class="btn" style="flex:none;padding:7px 10px;color:var(--red)" data-del="${j.id}">삭제</button>
-    </div>`).join("") : `<p class="help">아직 작업이 없습니다. 아래에서 좌표 파일을 불러오세요.</p>`;
+    </div>`).join("") : `<p class="help">아직 작업이 없습니다. 아래 '＋ 새 작업'으로 파일을 불러오세요.</p>`;
 }
 const rec = (id) => S.recs[id] || (S.recs[id] = { status: "미조사", memo: "", time: "", gps: null, photos: [] });
 
@@ -1540,6 +1537,7 @@ $("fileIn").onchange = async e => {
 const num = (v) => { const n = parseFloat(String(v).replace(/,/g, "").trim()); return isFinite(n) ? n : NaN; };
 const ymd = (s) => String(s || "").replace(/\D/g, "").slice(0, 8);
 const ymdDot = (s) => { const d = ymd(s); return d.length === 8 ? `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6)}` : String(s || ""); };
+$("btnCancelImp").onclick = () => { pending = null; $("mapCard").style.display = "none"; $("fileIn").value = ""; };
 $("btnApply").onclick = async () => {
   if (!pending) return;
   if (!backupBeforeChange("새 파일로 새 작업을 만듭니다.")) return;
