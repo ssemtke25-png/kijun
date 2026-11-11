@@ -804,7 +804,7 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
   </div>
   <div class="gpsrec" id="pGpsRec"></div>
   <div id="pStake" class="stake"></div>
-  <div class="row" style="margin-top:6px"><button class="btn" id="pMeas">📐 실측 (10초 평균)</button></div>
+  <div class="row" style="margin-top:6px"><button class="btn" id="pMeas">📐 실측</button></div>
   <div class="gpsrec" id="pMeasRec"></div>
   <div id="pStatBox">
   <div class="lbl">조사 결과 <span style="font-weight:400;color:var(--mut)">(완전·망실은 시스템 양식에 반영)</span></div>
@@ -864,6 +864,8 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
         <input type="text" id="setKey" placeholder="인증키 (위성·지적도)">
         <span>키 등록 URL</span>
         <input type="text" id="setDomain" placeholder="브이월드에 등록한 서비스 URL">
+        <span>관측 시간</span>
+        <select id="setObs"><option value="10">10초</option><option value="20">20초</option><option value="30">30초</option><option value="40">40초</option><option value="50">50초</option><option value="60">60초</option></select>
         <span>허용 편차(m)</span>
         <input type="text" id="setTol" inputmode="decimal" placeholder="예) 0.03  (비우면 판정 안 함)">
       </div>
@@ -880,7 +882,7 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
       <p class="help">이 휴대폰에 저장된 모든 작업(점·조사기록·사진)을 지웁니다. 작업 하나만 지우려면 위 작업 목록의 '삭제'를 쓰세요.</p>
       <div class="row"><button class="btn" id="btnReset" style="color:var(--red)">전체 지우기</button></div>
     </div>
-    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.11 17:30</p>
+    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.11 17:36</p>
   </div>
 </div>
 
@@ -1025,7 +1027,7 @@ const nowStr = () => { const d = new Date(), p = n => String(n).padStart(2, "0")
 let S = { title: "기준점 조사", cols: [], points: [], recs: {} };   // recs[id] = {status, memo, time, gps, photos:[{key,slot,name}]}
 // 브이월드 키 : 휴대폰에서 직접 넣은 키 > config.js의 공용 키
 const CFG = { key: (window.VWORLD_KEY || "").trim(), domain: (window.VWORLD_DOMAIN || "").trim() };
-let set = { origin: "EPSG:5187", key: CFG.key, domain: CFG.domain, tol: "", bk: "10" };
+let set = { origin: "EPSG:5187", key: CFG.key, domain: CFG.domain, tol: "", bk: "10", obs: "10" };
 let me = null, cur = null, filter = "전체";
 // 조사 작업 : 파일을 불러올 때마다 작업 하나가 생기고, 작업마다 따로 자동 저장 (덮어쓰지 않음)
 //   kv "projects" = [{id, title, created, updated, done, total}], kv "proj:<id>" = S, kv "cur" = 지금 작업 id
@@ -1224,20 +1226,22 @@ function showDist() {
       <small>지금 위치 X ${m.X.toFixed(3)} · Y ${m.Y.toFixed(3)} · 정확도 ±${fmtAcc(me.acc)}${me.acc >= 1 ? " (휴대폰 GPS라 참고용)" : ""}</small>`;
   } else box.style.display = "none";
 }
-// 📐 실측 : 10초 동안 받은 위치를 평균 내서 성과와 비교 (RTK 장비면 cm 단위)
+// 📐 실측 : 정한 관측 시간(10~60초) 동안 받은 위치를 평균 내서 성과와 비교 (RTK 장비면 cm 단위)
+const obsSec = () => Math.min(60, Math.max(10, parseInt(set.obs || "10", 10) || 10));
+const measLabel = () => S.mode === "insp" ? `📐 검사 실측 (${obsSec()}초 평균 · 허용 ±${S.tol}m)` : `📐 실측 (${obsSec()}초 평균)`;
 let measuring = false;
 $("pMeas").onclick = () => {
   if (measuring) return;
   const id = cur, p = P(id); if (!p || !isFinite(p.X)) return;
   if (!me) { toast("아직 내 위치를 못 찾았습니다"); return; }
-  measuring = true; const got = []; let left = 10;
+  measuring = true; const got = []; let left = obsSec();
   const btn = $("pMeas"); btn.textContent = `📐 실측 중… ${left}초 (점 위에 그대로)`;
   const fn = () => {}; got.push({ ...me });
   const t = setInterval(() => {
     left--; btn.textContent = `📐 실측 중… ${left}초 (점 위에 그대로)`;
     got.push({ ...me });   // 1초마다 지금 위치를 한 번씩 받아 둠 (위치가 그대로여도)
     if (left > 0) return;
-    clearInterval(t); measFns.delete(fn); measuring = false; btn.textContent = S.mode === "insp" ? `📐 검사 실측 (10초 평균 · 허용 ±${S.tol}m)` : "📐 실측 (10초 평균)";
+    clearInterval(t); measFns.delete(fn); measuring = false; btn.textContent = measLabel();
     const lat = got.reduce((a, g) => a + g.lat, 0) / got.length, lon = got.reduce((a, g) => a + g.lon, 0) / got.length;
     const acc = got.reduce((a, g) => a + g.acc, 0) / got.length, m = llToTM(lat, lon, p.originName);
     const fixes = new Set(got.map(g => g.t)).size;
@@ -1290,7 +1294,7 @@ function openPoint(id, fly) {
   $("pMemo").value = r.memo || "";
   $("pGpsRec").textContent = r.gps ? `기록한 현장 위치 : ${r.gps.lat.toFixed(6)}, ${r.gps.lon.toFixed(6)} (±${fmtAcc(r.gps.acc)}, ${r.gps.time})` : "";
   $("pStatBox").style.display = S.mode === "insp" ? "none" : "";
-  $("pMeas").textContent = S.mode === "insp" ? `📐 검사 실측 (10초 평균 · 허용 ±${S.tol}m)` : "📐 실측 (10초 평균)";
+  $("pMeas").textContent = measLabel();
   drawPhotos(); showMeas();
   $("sheet").classList.add("on"); openLayer("sheet");
 }
@@ -1736,6 +1740,7 @@ function bkInfo() {
 }
 $("setBk").onchange = async () => { set.bk = $("setBk").value; await DB.set("set", set); bkInfo(); toast(set.bk === "0" ? "자동 백업을 껐습니다" : `${set.bk}점마다 자동 백업합니다`); };
 $("btnBackup").onclick = () => downloadBackup(false);
+$("setObs").onchange = async () => { set.obs = $("setObs").value; await DB.set("set", set); if (cur && !measuring) $("pMeas").textContent = measLabel(); toast(`관측 시간 ${set.obs}초로 평균합니다`); };
 
 // ───────── 내보내기 (엑셀 + 사진 ZIP) ─────────
 // 1) 원래 양식 그대로 : 조사한 점만 최종조사내용·최종조사일자를 이번 결과로 바꿈 (폐기 등 나머지 줄은 그대로)
@@ -1875,7 +1880,7 @@ $("btnReset").onclick = async () => {
     if (!set.domain) set.domain = CFG.domain;
   } catch (e) { toast("휴대폰 저장소를 열지 못했습니다 : " + e.message, 5000); }
   $("keyInfo").textContent = CFG.key ? (set.key === CFG.key ? "공용 키(config.js)를 쓰는 중입니다." : "이 휴대폰에서 직접 넣은 키를 쓰는 중입니다. 칸을 비우고 저장하면 공용 키(config.js)로 돌아갑니다.") : "config.js 공용 키가 없습니다.";
-  $("setOrigin").value = set.origin; $("setKey").value = set.key; $("setDomain").value = set.domain || ""; $("setTol").value = set.tol || ""; $("setBk").value = set.bk ?? "10";
+  $("setOrigin").value = set.origin; $("setKey").value = set.key; $("setDomain").value = set.domain || ""; $("setTol").value = set.tol || ""; $("setBk").value = set.bk ?? "10"; $("setObs").value = set.obs || "10";
   buildLayers(); drawPoints(); fitAll(); startGPS();
   // 예전 버전에서 불러온 자료면 (폐기 점이 빠져 있음) 다시 불러오라고 알림
   if (S.rows && S.points.length < S.rows.length)
