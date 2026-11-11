@@ -745,6 +745,8 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
 .li .t{flex:1;min-width:0}
 .li .t b{display:block;font-size:15px}
 .li .t span{font-size:12px;color:var(--mut);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .t span.tag{display:inline-block;margin-left:4px;font-size:11px;padding:1px 6px;vertical-align:2px}
+#projList .li .t span{white-space:normal}
 .li .d{font-size:13px;color:var(--navy);font-weight:700;white-space:nowrap}
 .chips{display:flex;gap:6px;overflow:auto;margin:8px 0 12px}
 .chips button{border:1px solid var(--line);background:#fff;border-radius:16px;padding:6px 12px;font-size:13px;white-space:nowrap}
@@ -811,7 +813,12 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
   <div class="phead"><button class="ibtn" data-close>←</button><h3>메뉴</h3></div>
   <div class="pbody">
     <div class="card">
-      <h4>📂 좌표 파일 불러오기</h4>
+      <h4>📁 조사 작업</h4>
+      <p class="help">불러온 파일마다 작업이 따로 저장됩니다. 조사하는 동안 자동 저장되고, 다른 파일을 불러와도 지난 작업은 그대로 남습니다.</p>
+      <div id="projList" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <h4>📂 좌표 파일 불러오기 (새 작업)</h4>
       <p class="help">엑셀(xlsx·xls)이나 CSV. 첫 줄은 열 이름이어야 합니다. 열 이름은 자동으로 맞추고, 틀리면 아래에서 고칠 수 있습니다.</p>
       <input type="file" id="fileIn" accept=".xlsx,.xls,.csv,.txt" style="margin-top:6px;width:100%">
     </div>
@@ -849,7 +856,7 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
     </div>
     <div class="card">
       <h4>🗑️ 처음부터</h4>
-      <p class="help">이 휴대폰에 저장된 점·조사기록·사진을 모두 지웁니다. 꼭 먼저 내보내기 하세요.</p>
+      <p class="help">이 휴대폰에 저장된 모든 작업(점·조사기록·사진)을 지웁니다. 작업 하나만 지우려면 위 작업 목록의 '삭제'를 쓰세요.</p>
       <div class="row"><button class="btn" id="btnReset" style="color:var(--red)">전체 지우기</button></div>
     </div>
     <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.</p>
@@ -966,6 +973,7 @@ const DB = (() => {
     pGet: (k) => tx("photo", "readonly", s => s.get(k)),
     pSet: (k, v) => tx("photo", "readwrite", s => s.put(v, k)),
     pDel: (k) => tx("photo", "readwrite", s => s.delete(k)),
+    del: (k) => tx("kv", "readwrite", s => s.delete(k)),
     clear: () => Promise.all([tx("kv", "readwrite", s => s.clear()), tx("photo", "readwrite", s => s.clear())]),
   };
 })();
@@ -996,7 +1004,56 @@ let S = { title: "기준점 조사", cols: [], points: [], recs: {} };   // recs
 const CFG = { key: (window.VWORLD_KEY || "").trim(), domain: (window.VWORLD_DOMAIN || "").trim() };
 let set = { origin: "EPSG:5187", key: CFG.key, domain: CFG.domain };
 let me = null, cur = null, filter = "전체";
-const saveS = () => DB.set("state", S);
+// 조사 작업 : 파일을 불러올 때마다 작업 하나가 생기고, 작업마다 따로 자동 저장 (덮어쓰지 않음)
+//   kv "projects" = [{id, title, created, updated, done, total}], kv "proj:<id>" = S, kv "cur" = 지금 작업 id
+let projects = [], curProj = null;
+function projSummary() {
+  const mp = S.points.filter(p => !p.noMap);
+  return { done: mp.filter(p => (S.recs[p.id] || {}).status && S.recs[p.id].status !== "미조사").length, total: mp.length, all: S.points.length };
+}
+let saveT;
+async function saveNow() {
+  if (!curProj) return;
+  await DB.set("proj:" + curProj, S);
+  const i = projects.findIndex(x => x.id === curProj);
+  if (i >= 0) { Object.assign(projects[i], { title: S.title, updated: nowStr() }, projSummary()); await DB.set("projects", projects); }
+}
+const saveS = () => { clearTimeout(saveT); return new Promise(ok => { saveT = setTimeout(() => saveNow().then(ok), 150); }); };
+async function newProject(data) {
+  const id = "j" + Date.now().toString(36);
+  S = data; curProj = id;
+  projects.unshift(Object.assign({ id, title: S.title, created: nowStr(), updated: nowStr() }, projSummary()));
+  await DB.set("cur", id); await saveNow();
+}
+async function switchProject(id) {
+  if (id === curProj) return;
+  await saveNow();
+  const d = await DB.get("proj:" + id); if (!d) { toast("작업을 찾지 못했습니다"); return; }
+  S = d; curProj = id; await DB.set("cur", id);
+  setFilter("전체"); hideSheet(); drawPoints(); fitAll(); renderProjects();
+  toast(`'${S.title}' 작업을 열었습니다`);
+}
+async function deleteProject(id) {
+  const d = id === curProj ? S : await DB.get("proj:" + id);
+  if (d) for (const r of Object.values(d.recs || {})) for (const ph of (r.photos || [])) await DB.pDel(ph.key);
+  await DB.del("proj:" + id);
+  projects = projects.filter(x => x.id !== id); await DB.set("projects", projects);
+  if (id === curProj) {
+    if (projects.length) { curProj = null; await switchProject(projects[0].id); }
+    else { curProj = null; S = { title: "기준점 조사", cols: [], points: [], recs: {} }; await DB.del("cur"); drawPoints(); }
+  }
+  renderProjects();
+}
+function renderProjects() {
+  const box = $("projList"); if (!box) return;
+  box.innerHTML = projects.length ? projects.map(j => `
+    <div class="li" style="${j.id === curProj ? "border-color:var(--navy);border-width:2px" : ""}">
+      <div class="t"><b>${esc(j.title)}${j.id === curProj ? ' <span class="tag" style="background:var(--navy);color:#fff">지금 작업</span>' : ""}</b>
+        <span>조사 ${j.done || 0} / ${j.total || 0}점${j.all > j.total ? ` (전체 ${j.all})` : ""} · 만든 날 ${esc((j.created || "").slice(0, 10))} · 마지막 저장 ${esc((j.updated || "").slice(5))}</span></div>
+      ${j.id === curProj ? "" : `<button class="btn" style="flex:none;padding:7px 12px" data-open="${j.id}">열기</button>`}
+      <button class="btn" style="flex:none;padding:7px 10px;color:var(--red)" data-del="${j.id}">삭제</button>
+    </div>`).join("") : `<p class="help">아직 작업이 없습니다. 아래에서 좌표 파일을 불러오세요.</p>`;
+}
 const rec = (id) => S.recs[id] || (S.recs[id] = { status: "미조사", memo: "", time: "", gps: null, photos: [] });
 
 // ───────── 지도 ─────────
@@ -1232,7 +1289,7 @@ async function savePhoto(inp, slot) {
   try {
     const blob = await shrink(inp.files[0]);
     let n = 1; while (r.photos.some(x => x.name === photoName(p, slot, n))) n++;
-    const name = photoName(p, slot, n), key = `${id}|${name}`;
+    const name = photoName(p, slot, n), key = `${curProj}|${id}|${name}`;
     await DB.pSet(key, blob);
     r.photos.push({ key, slot, name }); touch(id);
     if (cur === id) drawPhotos(); toast(`${name} 저장`);
@@ -1271,7 +1328,7 @@ $("chips").onclick = e => { const b = e.target.closest("button"); if (b) { setFi
 $("list").onclick = e => { const li = e.target.closest(".li"); if (li) { const id = li.dataset.id; closeLayer("list", () => openPoint(id, true)); } };
 $("fabList").onclick = () => { renderList(); $("pnList").classList.add("on"); openLayer("list"); };
 document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => closeLayer(b.closest(".panel").id === "pnMenu" ? "menu" : "list"));
-$("btnMenu").onclick = () => { $("pnMenu").classList.add("on"); openLayer("menu"); };
+$("btnMenu").onclick = () => { renderProjects(); $("mapCard").style.display = "none"; $("pnMenu").classList.add("on"); $("pnMenu").querySelector(".pbody").scrollTop = 0; openLayer("menu"); };
 $("btnEmptyOpen").onclick = () => { $("pnMenu").classList.add("on"); openLayer("menu"); $("fileIn").click(); };
 
 // ───────── 파일 불러오기 ─────────
@@ -1371,11 +1428,12 @@ $("btnApply").onclick = async () => {
     pts.push(Object.assign(base, { X, Y, originName: ORIGIN_NAME[code], lat: ll.lat, lon: ll.lon }));
   });
   if (!pts.some(onMap)) { toast("지도에 올릴 점이 없습니다. 원점·X·Y 열을 확인해 주세요", 4000); return; }
-  const hasRec = Object.values(S.recs).some(r => r.status !== "미조사" || r.photos.length || r.memo);
-  if (hasRec && !confirm("지금 있는 조사 기록과 사진이 지워집니다. 내보내기를 먼저 하셨나요?")) return;
-  if (hasRec) await DB.clear();
-  S = { title: pending.file.replace(/\.[^.]+$/, ""), sheet: pending.sheet, cols: pending.cols, rows: pending.rows, map: m, points: pts, recs: {} };
-  await saveS(); await DB.set("set", set);
+  // 기존 작업은 그대로 두고 새 작업으로 만듦 (같은 이름이 있으면 뒤에 날짜를 붙임)
+  await saveNow();
+  let title = pending.file.replace(/\.[^.]+$/, "");
+  if (projects.some(j => j.title === title)) title += ` (${nowStr().slice(5, 16)})`;
+  await newProject({ title, sheet: pending.sheet, cols: pending.cols, rows: pending.rows, map: m, points: pts, recs: {} });
+  await DB.set("set", set); setFilter("전체"); renderProjects();
   $("mapCard").style.display = "none"; $("fileIn").value = "";
   closeAll(() => { drawPoints(); fitAll(); }); drawPoints(); fitAll();
   const sk = Object.entries(skip).map(([k, n]) => `${k} ${n}`).join(", ");
@@ -1469,9 +1527,21 @@ $("btnSaveSet").onclick = async () => {
   $("setKey").value = set.key;
   await DB.set("set", set); buildLayers(); toast("설정을 저장했습니다");
 };
+$("projList").onclick = async e => {
+  const o = e.target.dataset && e.target.dataset.open, d = e.target.dataset && e.target.dataset.del;
+  if (o) closeAll(() => switchProject(o));
+  if (d) {
+    const j = projects.find(x => x.id === d);
+    if (confirm(`'${j.title}' 작업의 조사기록과 사진을 지울까요? (내보내기를 먼저 하세요)`)) { await deleteProject(d); toast("작업을 지웠습니다"); }
+  }
+};
+// 화면을 끄거나 앱을 내릴 때 바로 저장
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveNow(); });
+window.addEventListener("pagehide", () => saveNow());
 $("btnReset").onclick = async () => {
-  if (!confirm("점·조사기록·사진을 모두 지울까요? 되돌릴 수 없습니다.")) return;
+  if (!confirm("모든 작업의 점·조사기록·사진을 지울까요? 되돌릴 수 없습니다.")) return;
   await DB.clear(); await DB.set("set", set);
+  projects = []; curProj = null; renderProjects();
   S = { title: "기준점 조사", cols: [], points: [], recs: {} }; closeAll(() => drawPoints()); drawPoints(); toast("모두 지웠습니다");
 };
 
@@ -1479,7 +1549,14 @@ $("btnReset").onclick = async () => {
 (async () => {
   try {
     await DB.open();
-    const s = await DB.get("state"); if (s && s.points) S = s;
+    projects = (await DB.get("projects")) || [];
+    const old = await DB.get("state");
+    if (old && old.points && old.points.length) { await newProject(old); await DB.del("state"); }   // 예전 버전 자료 → 작업 하나로
+    else {
+      const c = await DB.get("cur"), id = projects.some(j => j.id === c) ? c : projects[0] && projects[0].id;
+      if (id) { const d = await DB.get("proj:" + id); if (d) { S = d; curProj = id; } }
+    }
+    renderProjects();
     const st = await DB.get("set"); if (st) set = { ...set, ...st };
     if (!set.key) set.key = CFG.key;
     if (!set.domain) set.domain = CFG.domain;
