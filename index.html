@@ -1276,7 +1276,7 @@ function openPoint(id, fly) {
   $("pNoMap").textContent = p.noMap ? `지도에 표시할 수 없는 점입니다 (${p.reason}). 목록에서 정보만 확인할 수 있고, 조사 결과는 원래 값 그대로 내보냅니다.` : "";
   $("pName").textContent = p.name; $("pType").textContent = p.type || "기준점"; $("pType").style.display = p.type ? "" : "none";
   const fd = { maximumFractionDigits: S.mode === "insp" ? 4 : 2 }, xy = !p.noMap && isFinite(p.X) ? `${S.mode === "insp" ? "성과 " : ""}X ${p.X.toLocaleString("ko-KR", fd)} · Y ${p.Y.toLocaleString("ko-KR", fd)} (${p.originName})${S.mode === "insp" ? ` · 허용 ±${S.tol}m` : ""}` : "";
-  $("pMeta").innerHTML = [p.addr && esc(p.addr), xy, p.no && `기준점번호 ${esc(p.no)}`,
+  $("pMeta").innerHTML = [p.addr && esc(p.addr), xy, p.no && `기준점번호 ${esc(p.no)}`, S.mode === "insp" && p.formNo && p.formNo !== p.name && `검사 양식 번호 ${esc(p.formNo)}`,
     p.prevStat && `지난 조사 : <b>${esc(p.prevStat)}</b>${p.prevDate ? ` (${esc(ymdDot(p.prevDate))})` : ""}`].filter(Boolean).join("<br>");
   showDist();
   $("pStat").innerHTML = STATUS.map(s => `<button data-s="${s.k}" class="${r.status === s.k ? "on" : ""}" style="${r.status === s.k ? `background:${s.hex}` : ""}">${s.k}</button>`).join("");
@@ -1569,13 +1569,26 @@ function showInspCard(info, fileName) {
   $("colHint").textContent = `${fileName} · 점마다 실측하면 연결교차를 바로 계산하고, 끝나면 이 양식의 검사측량성과 칸을 채워 돌려줍니다.`;
   $("mapCard").style.display = "block"; $("mapCard").scrollIntoView({ behavior: "smooth" });
 }
+// 다른 작업(기준점 조사)에 들어 있는 점 목록 : 검사 양식에 기준점명 등을 붙일 때 씀
+async function refPoints() {
+  const out = [];
+  for (const j of projects) {
+    const d = j.id === curProj ? S : await DB.get("proj:" + j.id);
+    if (!d || d.mode === "insp") continue;
+    for (const q of d.points || []) if (!q.noMap && isFinite(q.X)) out.push(q);
+  }
+  return out;
+}
 async function applyInsp() {
   const info = pending.insp;
   set.origin = $("impOrigin").value; $("setOrigin").value = set.origin;
   const tol = parseFloat($("impTol").value) || info.tol;
-  const pts = [];
+  const pts = [], ref = await refPoints(); let hit = 0;
   info.rows.forEach((r, i) => {
-    const base = { id: "p" + i, row: r.excelRow, name: r.name, no: "", type: "검사점", addr: "", prevStat: "", prevDate: "" };
+    // 이미 불러온 기준점 작업에서 같은 자리(좌표 차이 0.5m 안)의 점을 찾아 기준점명·종류·소재지·번호를 가져옴
+    const f = r.X > 0 ? ref.find(q => Math.abs(q.X - r.X) < 0.5 && Math.abs(q.Y - r.Y) < 0.5) : null; if (f) hit++;
+    const base = { id: "p" + i, row: r.excelRow, formNo: r.name, name: f ? f.name : r.name, no: f ? f.no : "", type: f ? f.type || "기준점" : "검사점",
+      addr: f ? f.addr : "", prevStat: f ? f.prevStat : "", prevDate: f ? f.prevDate : "" };
     const ll = r.X > 0 && r.Y > 0 ? tmToLL(r.X, r.Y, set.origin) : null;
     if (!ll) pts.push(Object.assign(base, { noMap: true, reason: "좌표없음", X: r.X, Y: r.Y, originName: "", lat: null, lon: null }));
     else pts.push(Object.assign(base, { X: ll.swapped ? r.Y : r.X, Y: ll.swapped ? r.X : r.Y, originName: ORIGIN_NAME[set.origin], lat: ll.lat, lon: ll.lon }));
@@ -1589,7 +1602,7 @@ async function applyInsp() {
   await DB.set("set", set); setFilter("전체"); renderProjects();
   $("mapCard").style.display = "none"; $("fileIn").value = "";
   closeAll(() => { drawPoints(); fitAll(); }); drawPoints(); fitAll();
-  toast(`검사 ${pts.length}점을 올렸습니다 · 허용 ±${tol}m`, 4000);
+  toast(`검사 ${pts.length}점을 올렸습니다 · 허용 ±${tol}m` + (hit ? ` · ${hit}점은 기준점 자료에서 기준점명·소재지를 가져옴` : ""), 5000);
 }
 const modOf = (v, m) => m > 0 ? ((v % m) + m) % m : v;
 // 원래 엑셀 파일을 열어 해당 칸만 바꿔 넣음 (서식·테두리·수식 그대로)
@@ -1653,11 +1666,11 @@ async function buildInspZip() {
       const F = +(B - D).toFixed(4), G = +(C - E).toFixed(4), H = +Math.hypot(F, G).toFixed(4);
       fills.push({ row: p.row, D, E, F, G, H, note: H > tol ? `허용 초과(±${tol})` : "" });
     }
-    rows.push({ "기준점번호": p.name, "성과X": p.X, "성과Y": p.Y, "실측X": m ? m.X : "", "실측Y": m ? m.Y : "",
+    rows.push({ "기준점번호": p.formNo || p.name, "기준점명": p.name, "종류": p.type, "소재지": p.addr, "성과X": p.X, "성과Y": p.Y, "실측X": m ? m.X : "", "실측Y": m ? m.Y : "",
       "△X(성과−검사)": m ? +(-m.dX).toFixed(4) : "", "△Y(성과−검사)": m ? +(-m.dY).toFixed(4) : "", "연결교차": m ? m.d : "",
       "판정": m ? (m.d <= tol ? `적합(±${tol})` : `초과(±${tol})`) : "미측정", "실측정확도(m)": m ? +m.acc.toFixed(3) : "", "평균횟수": m ? m.n : "",
       "실측일시": m ? m.time : "", "실측횟수": (r.measAll || (m ? [m] : [])).length, "메모": r.memo || "", "사진파일": r.photos.map(x => x.name).join(", ") });
-    (r.measAll || (m ? [m] : [])).forEach((x, i) => hist.push({ "기준점번호": p.name, "회차": i + 1, "실측일시": x.time, "실측X": x.X, "실측Y": x.Y,
+    (r.measAll || (m ? [m] : [])).forEach((x, i) => hist.push({ "기준점번호": p.formNo || p.name, "기준점명": p.name, "회차": i + 1, "실측일시": x.time, "실측X": x.X, "실측Y": x.Y,
       "△X(성과−검사)": +(-x.dX).toFixed(4), "△Y(성과−검사)": +(-x.dY).toFixed(4), "연결교차": x.d, "판정": x.d <= tol + 1e-9 ? "적합" : "초과",
       "정확도(m)": +x.acc.toFixed(3), "채택": x === m || (m && x.time === m.time && x.d === m.d) ? "○" : "" }));
     for (const ph of r.photos) { const b = await DB.pGet(ph.key); if (b) dir.file(ph.name, b); }
