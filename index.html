@@ -839,6 +839,13 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
       <div class="row"><button class="btn pri" id="btnApply">이대로 지도에 올리기</button></div>
     </div>
     <div class="card">
+      <h4>💾 자동 백업</h4>
+      <p class="help">정한 점 수만큼 실측(또는 조사)할 때마다 탭·휴대폰의 다운로드 폴더에 백업 엑셀을 자동으로 남깁니다. 사진은 빠지고 기록만 들어갑니다. 처음 한 번은 크롬이 "여러 파일 다운로드"를 허용할지 물을 수 있습니다.</p>
+      <div class="map2"><span>백업 간격</span><select id="setBk"><option value="0">끄기</option><option value="5">5점마다</option><option value="10" selected>10점마다</option><option value="20">20점마다</option></select></div>
+      <div class="row"><button class="btn" id="btnBackup">지금 백업</button></div>
+      <p class="help" id="bkInfo"></p>
+    </div>
+    <div class="card">
       <h4>📤 조사 결과 내보내기</h4>
       <p class="help">조사결과 엑셀 + 점 이름이 붙은 사진을 ZIP 하나로 묶습니다. 카톡 '나에게 보내기'나 메일로 PC에 옮기세요.</p>
       <div class="row"><button class="btn red" id="btnExport">ZIP 저장</button><button class="btn" id="btnShare">공유하기</button></div>
@@ -873,7 +880,7 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
       <p class="help">이 휴대폰에 저장된 모든 작업(점·조사기록·사진)을 지웁니다. 작업 하나만 지우려면 위 작업 목록의 '삭제'를 쓰세요.</p>
       <div class="row"><button class="btn" id="btnReset" style="color:var(--red)">전체 지우기</button></div>
     </div>
-    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.</p>
+    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.11 17:30</p>
   </div>
 </div>
 
@@ -1018,7 +1025,7 @@ const nowStr = () => { const d = new Date(), p = n => String(n).padStart(2, "0")
 let S = { title: "기준점 조사", cols: [], points: [], recs: {} };   // recs[id] = {status, memo, time, gps, photos:[{key,slot,name}]}
 // 브이월드 키 : 휴대폰에서 직접 넣은 키 > config.js의 공용 키
 const CFG = { key: (window.VWORLD_KEY || "").trim(), domain: (window.VWORLD_DOMAIN || "").trim() };
-let set = { origin: "EPSG:5187", key: CFG.key, domain: CFG.domain, tol: "" };
+let set = { origin: "EPSG:5187", key: CFG.key, domain: CFG.domain, tol: "", bk: "10" };
 let me = null, cur = null, filter = "전체";
 // 조사 작업 : 파일을 불러올 때마다 작업 하나가 생기고, 작업마다 따로 자동 저장 (덮어쓰지 않음)
 //   kv "projects" = [{id, title, created, updated, done, total}], kv "proj:<id>" = S, kv "cur" = 지금 작업 id
@@ -1239,7 +1246,7 @@ $("pMeas").onclick = () => {
     // 다시 찍으면 지난 실측은 이력으로 남기고, 가장 최근 것을 채택 (카드에서 다른 회차로 바꿀 수 있음)
     const rr = rec(id); rr.measAll = rr.measAll || (rr.meas ? [rr.meas] : []); rr.measAll.push(nm); rr.meas = nm;
     if (S.mode === "insp") rr.status = judgeOf(nm) ? "적합" : "초과";
-    rr.time = nowStr(); saveNow(); drawPoints(); if (cur === id) { showMeas(); if (markers[id]) markers[id].setStyle(styleFor(P(id), true)); }
+    rr.time = nowStr(); saveNow(); countBackup(); drawPoints(); if (cur === id) { showMeas(); if (markers[id]) markers[id].setStyle(styleFor(P(id), true)); }
     toast(S.mode === "insp" ? `연결교차 ${Math.hypot(dX, dY).toFixed(4)}m → ${rec(id).status}` : `실측 완료 : 편차 ${Math.hypot(dX, dY).toFixed(3)}m`, 3500);
   }, 1000);
 };
@@ -1322,7 +1329,7 @@ window.addEventListener("popstate", e => {
 function touch(id) { rec(id).time = nowStr(); saveNow(); }
 $("pStat").onclick = e => {
   const b = e.target.closest("button"); if (!b || !cur) return;
-  rec(cur).status = b.dataset.s; touch(cur); drawPoints(); openPoint(cur); renderList();
+  rec(cur).status = b.dataset.s; touch(cur); countBackup(); drawPoints(); openPoint(cur); renderList();
 };
 $("pMemo").oninput = () => { if (!cur) return; rec(cur).memo = $("pMemo").value; clearTimeout($("pMemo")._t); $("pMemo")._t = setTimeout(() => touch(cur), 500); };
 $("pNav").onclick = () => { const p = P(cur); window.open(`https://map.kakao.com/link/to/${encodeURIComponent(p.name)},${p.lat.toFixed(7)},${p.lon.toFixed(7)}`, "_blank"); };   // 새 창 : 길찾기 후 돌아와도 앱 그대로
@@ -1414,7 +1421,7 @@ $("chips").onclick = e => { const b = e.target.closest("button"); if (b) { setFi
 $("list").onclick = e => { const li = e.target.closest(".li"); if (li) { const id = li.dataset.id; closeLayer("list", () => openPoint(id, true)); } };
 $("fabList").onclick = () => { renderList(); $("pnList").classList.add("on"); openLayer("list"); };
 document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => closeLayer(b.closest(".panel").id === "pnMenu" ? "menu" : "list"));
-$("btnMenu").onclick = () => { renderProjects(); $("mapCard").style.display = "none"; $("pnMenu").classList.add("on"); $("pnMenu").querySelector(".pbody").scrollTop = 0; openLayer("menu"); };
+$("btnMenu").onclick = () => { renderProjects(); bkInfo(); $("mapCard").style.display = "none"; $("pnMenu").classList.add("on"); $("pnMenu").querySelector(".pbody").scrollTop = 0; openLayer("menu"); };
 $("btnEmptyOpen").onclick = () => { $("pnMenu").classList.add("on"); openLayer("menu"); $("fileIn").click(); };
 
 // ───────── 파일 불러오기 ─────────
@@ -1692,6 +1699,44 @@ async function buildInspZip() {
   return { blob, name: `kijunjeom_insp_${stamp}_${hm}.zip` };
 }
 
+// ───────── 자동 백업 : N번 기록할 때마다 다운로드 폴더에 엑셀 한 개 ─────────
+function backupWorkbook() {
+  const wb = XLSX.utils.book_new(), ins = S.mode === "insp", rows = [], hist = [];
+  for (const p of S.points) {
+    const r = rec(p.id), m = r.meas;
+    rows.push({ "기준점번호": p.formNo || p.no || p.name, "기준점명": p.name, "종류": p.type, "소재지": p.addr, "성과X": isFinite(p.X) ? p.X : "", "성과Y": isFinite(p.Y) ? p.Y : "",
+      "상태": ins ? (m ? r.status : "미측정") : r.status, "실측X": m ? m.X : "", "실측Y": m ? m.Y : "",
+      "△X(성과−실측)": m ? +(-m.dX).toFixed(4) : "", "△Y(성과−실측)": m ? +(-m.dY).toFixed(4) : "", "연결교차·편차": m ? m.d : "",
+      "실측일시": m ? m.time : "", "실측횟수": (r.measAll || (m ? [m] : [])).length, "메모": r.memo || "", "사진": r.photos.map(x => x.name).join(", ") });
+    (r.measAll || (m ? [m] : [])).forEach((x, i) => hist.push({ "기준점번호": p.formNo || p.no || p.name, "기준점명": p.name, "회차": i + 1, "실측일시": x.time,
+      "실측X": x.X, "실측Y": x.Y, "연결교차·편차": x.d, "정확도(m)": +x.acc.toFixed(3), "채택": m && x.time === m.time && x.d === m.d ? "○" : "" }));
+  }
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "백업");
+  if (hist.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hist), "실측이력");
+  return XLSX.write(wb, { bookType: "xlsx", type: "array" });
+}
+function downloadBackup(auto) {
+  if (!S.points.length) { if (!auto) toast("백업할 작업이 없습니다"); return; }
+  const d = new Date(), p2 = (n) => String(n).padStart(2, "0");
+  const name = `backup_${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}.xlsx`;
+  const blob = new Blob([backupWorkbook()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  S.bkCount = 0; S.lastBackup = nowStr(); saveNow(); bkInfo();
+  toast(`${auto ? "자동 " : ""}백업 저장 : ${name} (다운로드 폴더)`, 3500);
+}
+function countBackup() {
+  const n = parseInt(set.bk ?? "10", 10); if (!n) return;
+  S.bkCount = (S.bkCount || 0) + 1; bkInfo();
+  if (S.bkCount >= n) downloadBackup(true);
+}
+function bkInfo() {
+  const n = parseInt(set.bk ?? "10", 10);
+  $("bkInfo").textContent = !n ? "자동 백업이 꺼져 있습니다." : `다음 자동 백업까지 ${Math.max(0, n - (S.bkCount || 0))}점` + (S.lastBackup ? ` · 마지막 백업 ${S.lastBackup}` : "");
+}
+$("setBk").onchange = async () => { set.bk = $("setBk").value; await DB.set("set", set); bkInfo(); toast(set.bk === "0" ? "자동 백업을 껐습니다" : `${set.bk}점마다 자동 백업합니다`); };
+$("btnBackup").onclick = () => downloadBackup(false);
+
 // ───────── 내보내기 (엑셀 + 사진 ZIP) ─────────
 // 1) 원래 양식 그대로 : 조사한 점만 최종조사내용·최종조사일자를 이번 결과로 바꿈 (폐기 등 나머지 줄은 그대로)
 // 2) 조사상세 : 메모·현장 위치·사진 파일 이름
@@ -1830,7 +1875,7 @@ $("btnReset").onclick = async () => {
     if (!set.domain) set.domain = CFG.domain;
   } catch (e) { toast("휴대폰 저장소를 열지 못했습니다 : " + e.message, 5000); }
   $("keyInfo").textContent = CFG.key ? (set.key === CFG.key ? "공용 키(config.js)를 쓰는 중입니다." : "이 휴대폰에서 직접 넣은 키를 쓰는 중입니다. 칸을 비우고 저장하면 공용 키(config.js)로 돌아갑니다.") : "config.js 공용 키가 없습니다.";
-  $("setOrigin").value = set.origin; $("setKey").value = set.key; $("setDomain").value = set.domain || ""; $("setTol").value = set.tol || "";
+  $("setOrigin").value = set.origin; $("setKey").value = set.key; $("setDomain").value = set.domain || ""; $("setTol").value = set.tol || ""; $("setBk").value = set.bk ?? "10";
   buildLayers(); drawPoints(); fitAll(); startGPS();
   // 예전 버전에서 불러온 자료면 (폐기 점이 빠져 있음) 다시 불러오라고 알림
   if (S.rows && S.points.length < S.rows.length)
