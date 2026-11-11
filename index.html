@@ -1006,9 +1006,11 @@ function buildLayers() {
   const k = set.key.trim();
   base = {};
   if (k) {
-    base["브이월드 위성"] = L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${k}/Satellite/{z}/{y}/{x}.jpeg`, { maxZoom: 19, attribution: "브이월드" });
-    base["브이월드 일반"] = L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${k}/Base/{z}/{y}/{x}.png`, { maxZoom: 19, attribution: "브이월드" });
-    base["지적도"] = L.tileLayer.wms("https://api.vworld.kr/req/wms", Object.assign({}, WMS_OPT(), { maxZoom: 21, minZoom: 15, attribution: "브이월드 연속지적도" }));
+    // referrerPolicy "no-referrer" : PC에서 파일로 열 때(주소 정보 없이 요청)처럼 보내 브이월드 주소 검사에 덜 걸리게
+    const VW = { maxZoom: 19, attribution: "브이월드", referrerPolicy: "no-referrer" };
+    base["브이월드 위성"] = watchTiles(L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${k}/Satellite/{z}/{y}/{x}.jpeg`, VW), "위성");
+    base["브이월드 일반"] = watchTiles(L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${k}/Base/{z}/{y}/{x}.png`, VW), "일반");
+    base["지적도"] = L.tileLayer.wms("https://api.vworld.kr/req/wms", Object.assign({}, WMS_OPT(), { maxZoom: 21, minZoom: 15, attribution: "브이월드 연속지적도", referrerPolicy: "no-referrer" }));
   }
   base["일반지도(OSM)"] = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" });
   layerIdx = 0; applyLayer();
@@ -1018,6 +1020,20 @@ const CRS900913 = L.extend({}, L.CRS.EPSG3857, { code: "EPSG:900913" });
 const wmsDomain = () => set.domain.trim() || (location.protocol === "file:" ? "http://localhost" : location.origin);
 const WMS_OPT = () => ({ layers: "lp_pa_cbnd_bubun,lp_pa_cbnd_bonbun", styles: "lp_pa_cbnd_bubun_line,lp_pa_cbnd_bonbun_line",
   format: "image/png", transparent: true, version: "1.3.0", crs: CRS900913, key: set.key.trim(), domain: wmsDomain() });
+// 브이월드 지도가 하나도 안 받아지면 알려 주고 일반지도(OSM)로 바꿈
+function watchTiles(layer, label) {
+  let ok = 0, bad = 0, told = false;
+  layer.on("tileload", () => ok++);
+  layer.on("tileerror", () => {
+    bad++;
+    if (!told && !ok && bad >= 6) {
+      told = true;
+      toast(`브이월드 ${label}지도를 받지 못했습니다. 키·등록 URL을 확인해 주세요. 일반지도로 바꿉니다`, 6000);
+      layerIdx = layerModes().length - 1; applyLayer();
+    }
+  });
+  return layer;
+}
 // 지도 종류 순서 : 위성+지적도 → 일반+지적도 → OSM
 let layerIdx = 0;
 function layerModes() {
