@@ -806,6 +806,10 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
   <div id="pStake" class="stake"></div>
   <div class="row" style="margin-top:6px"><button class="btn" id="pMeas">📐 실측</button></div>
   <div class="gpsrec" id="pMeasRec"></div>
+  <div id="pMarkBox" style="display:none">
+  <div class="lbl">표지 상태 <span style="font-weight:400;color:var(--mut)">(기준점 조사 · 검사와 따로 기록, 다시 누르면 지움)</span></div>
+  <div class="stat" id="pMark"></div>
+  </div>
   <div id="pStatBox">
   <div class="lbl">조사 결과 <span style="font-weight:400;color:var(--mut)">(완전·망실은 시스템 양식에 반영)</span></div>
   <div class="stat" id="pStat"></div>
@@ -892,7 +896,7 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
       <p class="help">이 휴대폰에 저장된 모든 작업(점·조사기록·사진)을 지웁니다. 작업 하나만 지우려면 위 작업 목록의 '삭제'를 쓰세요.</p>
       <div class="row"><button class="btn" id="btnReset" style="color:var(--red)">전체 지우기</button></div>
     </div>
-    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.12 08:00</p>
+    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.12 08:42</p>
   </div>
 </div>
 
@@ -1131,6 +1135,8 @@ let markers = {};
 const prevHex = (s) => /망실/.test(s || "") ? "#E5484D" : /완전/.test(s || "") ? "#2E9E6B" : "#7C8AA5";
 function styleFor(p, sel) {
   const st = rec(p.id).status;
+  if (S.mode === "insp" && st === "미조사" && rec(p.id).mark === "망실")
+    return Object.assign({ fillColor: "#4B5563", color: "#fff", weight: 3, dashArray: null, fillOpacity: 1, radius: sel ? 14 : 11 }, sel ? { weight: 5, color: "#1F2A55" } : {});
   const base = st === "미조사"
     ? { fillColor: "#fff", color: prevHex(p.prevStat), weight: 4, dashArray: /망실/.test(p.prevStat || "") ? "3 3" : null }
     : { fillColor: HEX[st], color: "#fff", weight: 3, dashArray: null };
@@ -1151,11 +1157,11 @@ function drawPoints() {
 }
 map.on("zoomend", drawPoints);
 function updateProg() {
-  const mp = S.points.filter(onMap), done = mp.filter(p => rec(p.id).status !== "미조사").length;
+  const mp = S.points.filter(onMap), done = mp.filter(p => rec(p.id).status !== "미조사" || (S.mode === "insp" && rec(p.id).mark)).length;
   $("prog").textContent = `${done} / ${mp.length}`;
   $("legend").style.display = S.points.length ? "" : "none";
   $("legend").innerHTML = S.mode === "insp"
-    ? `<div><i class="lg hol" style="border-color:#7C8AA5"></i>미측정 <small>(검사 ${mp.length}점 · 허용 ±${S.tol}m)</small></div><div><i class="lg" style="background:#2E9E6B"></i>적합 <i class="lg" style="background:#E5484D;margin-left:6px"></i>초과</div>`
+    ? `<div><i class="lg hol" style="border-color:#7C8AA5"></i>미측정 <small>(검사 ${mp.length}점 · 허용 ±${S.tol}m)</small></div><div><i class="lg" style="background:#2E9E6B"></i>적합 <i class="lg" style="background:#E5484D;margin-left:6px"></i>초과 <i class="lg" style="background:#4B5563;margin-left:6px"></i>망실(측정 전)</div>`
     : `<div><i class="lg hol" style="border-color:#2E9E6B"></i><i class="lg hol dash" style="border-color:#E5484D"></i>조사 전 <small>(테두리 = 지난 결과 : 초록 완전 · 빨강 망실)</small></div><div><i class="lg" style="background:#2E9E6B"></i><i class="lg" style="background:#E5484D"></i><i class="lg" style="background:#F28C28"></i>이번 조사 <small>(완전 · 망실 · 확인필요)</small></div>`;
   $("ttl").innerHTML = `${esc(S.title)}`;
   $("empty").style.display = S.points.length ? "none" : "block";
@@ -1331,6 +1337,8 @@ function openPoint(id, fly) {
   $("pMemo").value = r.memo || "";
   $("pGpsRec").textContent = r.gps ? `기록한 현장 위치 : ${r.gps.lat.toFixed(6)}, ${r.gps.lon.toFixed(6)} (±${fmtAcc(r.gps.acc)}, ${r.gps.time})` : "";
   $("pStatBox").style.display = S.mode === "insp" ? "none" : "";
+  $("pMarkBox").style.display = S.mode === "insp" ? "" : "none";
+  $("pMark").innerHTML = MARKS.map(k => `<button data-m="${k}" class="${r.mark === k ? "on" : ""}" style="${r.mark === k ? `background:${HEX[k]}` : ""}">${k}</button>`).join("");
   $("pMeas").textContent = measLabel();
   drawPhotos(); showMeas();
   $("sheet").classList.add("on"); openLayer("sheet");
@@ -1368,6 +1376,12 @@ window.addEventListener("popstate", e => {
   history.pushState({ d: 0 }, "");
 });
 function touch(id) { rec(id).time = nowStr(); saveNow(); }
+const MARKS = ["완전", "망실", "확인필요"];
+$("pMark").onclick = e => {
+  const b = e.target.closest("button"); if (!b || !cur) return;
+  const r = rec(cur); r.mark = r.mark === b.dataset.m ? "" : b.dataset.m;
+  touch(cur); countBackup(); drawPoints(); openPoint(cur); renderList();
+};
 $("pStat").onclick = e => {
   const b = e.target.closest("button"); if (!b || !cur) return;
   rec(cur).status = b.dataset.s; touch(cur); countBackup(); drawPoints(); openPoint(cur); renderList();
@@ -1453,7 +1467,7 @@ function renderList() {
     const r = rec(p.id), d = me && !p.noMap ? haversine(me, p) : null;
     const dot = p.noMap ? `background:#fff;border:2px dashed ${prevHex(p.prevStat)}` : r.status === "미조사" ? `background:#fff;border:3px ${/망실/.test(p.prevStat) ? "dotted" : "solid"} ${prevHex(p.prevStat)}` : `background:${HEX[r.status]}`;
     return `<div class="li" data-id="${p.id}"${p.noMap ? ' style="opacity:.7"' : ""}><span class="dot" style="${dot}"></span>
-      <div class="t"><b>${esc(p.name)}</b><span>${p.noMap ? `지도 없음(${esc(p.reason)}) · ` : ""}${esc(p.addr)}${p.prevStat ? ` · 지난 ${esc(p.prevStat)}` : ""}${r.status !== "미조사" ? ` → 이번 ${esc(r.status)}` : ""}${r.meas ? ` · ${S.mode === "insp" ? "연결교차" : "편차"} ${r.meas.d.toFixed(S.mode === "insp" ? 4 : 3)}m${judgeOf(r.meas) === null ? "" : judgeOf(r.meas) ? " ✔" : " ✖"}` : ""}${r.photos.length ? ` · 사진 ${r.photos.length}` : ""}</span></div>
+      <div class="t"><b>${esc(p.name)}</b><span>${p.noMap ? `지도 없음(${esc(p.reason)}) · ` : ""}${esc(p.addr)}${p.prevStat ? ` · 지난 ${esc(p.prevStat)}` : ""}${r.status !== "미조사" ? ` → 이번 ${esc(r.status)}` : ""}${S.mode === "insp" && r.mark ? ` · 표지 ${esc(r.mark)}` : ""}${r.meas ? ` · ${S.mode === "insp" ? "연결교차" : "편차"} ${r.meas.d.toFixed(S.mode === "insp" ? 4 : 3)}m${judgeOf(r.meas) === null ? "" : judgeOf(r.meas) ? " ✔" : " ✖"}` : ""}${r.photos.length ? ` · 사진 ${r.photos.length}` : ""}</span></div>
       <span class="d">${d != null ? fmtDist(d) : ""}</span></div>`;
   }).join("") || `<p class="help" style="text-align:center">해당하는 점이 없습니다</p>`;
 }
@@ -1696,9 +1710,11 @@ async function patchInspForm(form, fills) {
   };
   const k = form.cols;
   for (const f of fills) {
-    if (k.chkX) setNum(k.chkX + f.row, f.D); if (k.chkY) setNum(k.chkY + f.row, f.E);
-    if (k.errX) setNum(k.errX + f.row, f.F); if (k.errY) setNum(k.errY + f.row, f.G);
-    if (k.cross) setNum(k.cross + f.row, f.H);
+    if (f.D != null) {
+      if (k.chkX) setNum(k.chkX + f.row, f.D); if (k.chkY) setNum(k.chkY + f.row, f.E);
+      if (k.errX) setNum(k.errX + f.row, f.F); if (k.errY) setNum(k.errY + f.row, f.G);
+      if (k.cross) setNum(k.cross + f.row, f.H);
+    }
     if (k.note && f.note) setStr(k.note + f.row, f.note);
   }
   zip.file(path, ser(doc));
@@ -1719,9 +1735,10 @@ async function buildInspZip() {
       // 양식의 오차량 = 측량성과 − 검사측량성과. 나눌값(10) 경계를 넘어도 맞게 : D = MOD(성과) + (실측 − 성과)
       const B = modOf(p.X, mv), C = modOf(p.Y, mv), D = +(B + m.dX).toFixed(4), E = +(C + m.dY).toFixed(4);
       const F = +(B - D).toFixed(4), G = +(C - E).toFixed(4), H = +Math.hypot(F, G).toFixed(4);
-      fills.push({ row: p.row, D, E, F, G, H, note: H > tol ? `허용 초과(±${tol})` : "" });
-    }
-    rows.push({ "기준점번호": p.formNo || p.name, "기준점명": p.name, "종류": p.type, "소재지": p.addr, "성과X": p.X, "성과Y": p.Y, "실측X": m ? m.X : "", "실측Y": m ? m.Y : "",
+      fills.push({ row: p.row, D, E, F, G, H, note: [r.mark && r.mark !== "완전" ? r.mark : "", H > tol ? `허용 초과(±${tol})` : ""].filter(Boolean).join(" · ") });
+    } else if (r.mark && r.mark !== "완전") fills.push({ row: p.row, note: r.mark });   // 실측 없이 망실·확인필요만 적은 점
+    rows.push({ "기준점번호": p.formNo || p.name, "기준점명": p.name, "종류": p.type, "소재지": p.addr, "표지상태": r.mark || "", "지난조사": p.prevStat || "",
+      "성과X": p.X, "성과Y": p.Y, "실측X": m ? m.X : "", "실측Y": m ? m.Y : "",
       "△X(성과−검사)": m ? +(-m.dX).toFixed(4) : "", "△Y(성과−검사)": m ? +(-m.dY).toFixed(4) : "", "연결교차": m ? m.d : "",
       "판정": m ? (m.d <= tol ? `적합(±${tol})` : `초과(±${tol})`) : "미측정", "실측정확도(m)": m ? +m.acc.toFixed(3) : "", "평균횟수": m ? m.n : "",
       "실측일시": m ? m.time : "", "실측횟수": (r.measAll || (m ? [m] : [])).length, "메모": r.memo || "", "사진파일": r.photos.map(x => x.name).join(", ") });
@@ -1738,7 +1755,10 @@ async function buildInspZip() {
   const done = rows.filter(r => r["판정"] !== "미측정");
   const sum = [{ "구분": "전체", "점수": rows.length }, { "구분": "측정", "점수": done.length },
     { "구분": `적합(±${tol})`, "점수": done.filter(r => r["판정"].startsWith("적합")).length },
-    { "구분": `초과(±${tol})`, "점수": done.filter(r => r["판정"].startsWith("초과")).length }, { "구분": "미측정", "점수": rows.length - done.length }];
+    { "구분": `초과(±${tol})`, "점수": done.filter(r => r["판정"].startsWith("초과")).length }, { "구분": "미측정", "점수": rows.length - done.length },
+    { "구분": "", "점수": "" }, { "구분": "표지 완전", "점수": rows.filter(r => r["표지상태"] === "완전").length },
+    { "구분": "표지 망실", "점수": rows.filter(r => r["표지상태"] === "망실").length }, { "구분": "표지 확인필요", "점수": rows.filter(r => r["표지상태"] === "확인필요").length },
+    { "구분": "표지 미기록", "점수": rows.filter(r => !r["표지상태"]).length }];
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "검사상세"); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sum), "집계");
   if (hist.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hist), "실측이력");
   zip.file(`${base}_검사상세_${stamp}.xlsx`, writeNice(wb));
@@ -1900,7 +1920,7 @@ function backupWorkbook(D = S, reason = "") {
   for (const p of D.points || []) {
     const r = (D.recs || {})[p.id] || R0, m = r.meas;
     rows.push({ "기준점번호": p.formNo || p.no || p.name, "기준점명": p.name, "종류": p.type, "소재지": p.addr, "성과X": isFinite(p.X) ? p.X : "", "성과Y": isFinite(p.Y) ? p.Y : "",
-      "상태": ins ? (m ? r.status : "미측정") : r.status, "실측X": m ? m.X : "", "실측Y": m ? m.Y : "",
+      "상태": ins ? (m ? r.status : "미측정") : r.status, ...(ins ? { "표지상태": r.mark || "" } : {}), "실측X": m ? m.X : "", "실측Y": m ? m.Y : "",
       "△X(성과−실측)": m ? +(-m.dX).toFixed(4) : "", "△Y(성과−실측)": m ? +(-m.dY).toFixed(4) : "", "연결교차·편차": m ? m.d : "",
       "실측일시": m ? m.time : "", "실측횟수": (r.measAll || (m ? [m] : [])).length, "메모": r.memo || "", "사진": r.photos.map(x => x.name).join(", ") });
     (r.measAll || (m ? [m] : [])).forEach((x, i) => hist.push({ "기준점번호": p.formNo || p.no || p.name, "기준점명": p.name, "회차": i + 1, "실측일시": x.time,
