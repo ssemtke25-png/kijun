@@ -888,6 +888,8 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
         <label style="font-size:14px"><input type="checkbox" id="setSound" checked> 실측 끝·GNSS 연결/끊김 때 알림</label>
         <span>관측 시간</span>
         <select id="setObs"><option value="10">10초</option><option value="15">15초</option><option value="20">20초</option><option value="30">30초</option><option value="40">40초</option><option value="50">50초</option><option value="60">60초</option></select>
+        <span>자동 실측</span>
+        <label style="font-size:14px"><input type="checkbox" id="setAuto"> 안 잰 점 가까이 가만히 서면 저절로 실측</label>
         <span>허용 편차(m)</span>
         <input type="text" id="setTol" inputmode="decimal" placeholder="예) 0.03  (비우면 판정 안 함)">
       </div>
@@ -905,7 +907,7 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
       <p class="help">이 휴대폰에 저장된 모든 작업(점·조사기록·사진)을 지웁니다. 작업 하나만 지우려면 위 작업 목록의 '삭제'를 쓰세요.</p>
       <div class="row"><button class="btn" id="btnReset" style="color:var(--red)">전체 지우기</button></div>
     </div>
-    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.12 10:36</p>
+    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.12 13:17</p>
   </div>
 </div>
 
@@ -1229,6 +1231,7 @@ function onPos(p) {
         + `${q.pdop != null ? ` · PDOP ${q.pdop.toFixed(1)}` : ""} · <b>±${fmtAcc(me.acc)}</b>`
         + (set.fixOnly !== false && !q.ok ? `<br><span style="color:#E5484D">⚠ 규정 미달 : ${esc(q.bad.join(", "))}</span>` : "");
     } else $("gps").innerHTML = `${me.acc < 1 ? "RTK " : "GPS "}정확도 <b>±${fmtAcc(me.acc)}</b>`;
+    $("gps").insertAdjacentHTML("beforeend", `<div id="autoLine" style="color:#1F2A55">${set.auto ? (lastAutoLine || "") : ""}</div>`);
     for (const f of measFns) f(me);
     if (follow) map.panTo(ll);
     if (cur) showDist();
@@ -1289,22 +1292,64 @@ const avg = (a, d) => a.length ? +(a.reduce((s, v) => s + v, 0) / a.length).toFi
 // 지오이드 : 지적 검사(연결교차)는 수평 X·Y만 비교하므로 결과에는 영향 없음. 수신기·컨트롤러에 맞춘 모델을 기록으로 남김
 const GEOID_NAME = { rcv: "수신기 설정 그대로", KNGeoid24: "KNGeoid24", KNGeoid18: "KNGeoid18", none: "적용 안 함(타원체고)" };
 const WAIT_MAX = 180;   // 조건이 3분 넘게 안 맞으면 멈춤 (규정 : 초기화 3분 초과가 반복되면 측량 방법을 바꿈)
+// 🤖 자동 실측 : 아직 안 잰 점 가까이(RTK 1m · 휴대폰 GPS 5m 이상)에서 3초 동안 가만히 서 있으면 저절로 실측을 시작
+//  · RTK : 3초 동안 3cm 안에서 움직임 → 시작. 관측 중 5cm 넘게 움직이면 멈춤. 결과가 성과와 30cm 넘게 다르면 "점 위 아님"으로 보고 채택 안 함
+//  · 휴대폰 GPS : 정확도에 맞춰 넉넉하게 (가상점 시험용)
+//  · 메뉴·목록이 열려 있거나, 잰 점·망실 점, 방금 "점 위 아님"으로 건너뛴 자리는 제외
+const AUTO = { buf: [], run: null, skip: null };
+let lastAutoLine = "";
+function autoLims() {
+  if (GN.on) return { r: 1.0, still: 0.03, move: 0.05, reject: 0.3, clear: 0.15 };   // 수신기 연결 중엔 고정해 기준 (플로트면 흔들려서 시작 안 함)
+  const a = me ? me.acc : 10;
+  return { r: Math.min(15, Math.max(5, a * 1.5)), still: Math.max(1.5, Math.min(a * 0.5, 4)), move: Math.max(3, a), reject: null, clear: Math.max(3, a) };
+}
+function autoTick() {
+  const line = $("autoLine");
+  const say = (h) => { lastAutoLine = h; if (line) line.innerHTML = h; };
+  if (!set.auto || !me || !S.points.length) { say(""); AUTO.buf = []; return; }
+  const now = Date.now();
+  AUTO.buf.push({ lat: me.lat, lon: me.lon, t: now }); AUTO.buf = AUTO.buf.filter(b => now - b.t <= 3500);
+  if (measuring) { say(AUTO.run ? "🤖 자동 실측 중" : ""); return; }
+  if (document.querySelector(".panel.on")) { say(""); return; }
+  const L = autoLims();
+  let best = null, bd = Infinity;
+  for (const p of S.points) {
+    if (!onMap(p) || !isFinite(p.X)) continue;
+    const r = S.recs[p.id]; if (r && (r.meas || r.mark === "망실")) continue;
+    const d = haversine(me, p); if (d < bd) { bd = d; best = p; }
+  }
+  if (AUTO.skip && haversine(me, AUTO.skip.at) > L.clear) AUTO.skip = null;   // 건너뛴 자리에서 벗어나면 다시 잼
+  const dd = (d) => d < 1 ? `${(d * 100).toFixed(0)}cm` : fmtDist(d);
+  if (!best || bd > L.r) { say(`🤖 자동 실측 켜짐${best ? ` · 가까운 점 ${esc(best.name)} ${dd(bd)}` : " · 남은 점 없음"}`); return; }
+  if (AUTO.skip && AUTO.skip.id === best.id) { say(`🤖 ${esc(best.name)} : 점 위가 아니라 건너뜀 · 표지 위로 옮기면 다시 잼`); return; }
+  // 3초 동안 가만히 있었나 (가장 오래된 기록이 3초 전 이전이고, 그동안 움직인 거리가 기준 안)
+  const old = AUTO.buf[0], span = now - old.t, moved = Math.max(...AUTO.buf.map(b => haversine(me, b)));
+  if (span < 2900 || moved > L.still) { say(`🤖 ${esc(best.name)}까지 ${dd(bd)} · 가만히 서 있으면 자동 실측`); return; }
+  say(`🤖 ${esc(best.name)} 자동 실측 시작`);
+  if (cur !== best.id) openPoint(best.id, false);
+  startMeas(true);
+}
+setInterval(autoTick, 1000);
 let measuring = false, measStop = false;
 $("pMeas").onclick = () => {
-  if (measuring) { if (confirm("실측을 멈출까요? (지금까지 받은 값은 버립니다)")) measStop = true; return; }
+  if (measuring) { if (confirm("실측을 멈출까요? (지금까지 받은 값은 버립니다)")) { measStop = true; if (AUTO.run) AUTO.skip = AUTO.run; } return; }
+  startMeas(false);
+};
+function startMeas(auto) {
   const id = cur, p = P(id); if (!p || !isFinite(p.X)) return;
   if (!me) { toast("아직 내 위치를 못 찾았습니다"); return; }
   // 점에서 너무 멀면 한 번 물어봄 (다른 점 앞에서 잘못 누르는 경우 방지)
   const far = haversine(me, p), lim = Math.max(10, me.acc * 3);
-  if (far > lim && !confirm(`지금 위치가 ${p.name}에서 ${fmtDist(far)} 떨어져 있습니다. 그래도 실측할까요?`)) return;
-  // GNSS로 처음 실측할 때 지리원 아이디가 비어 있으면 한 번 물어봄 (관측기록에 남김)
-  if (GN.on && !set.ngii) {
+  if (!auto && far > lim && !confirm(`지금 위치가 ${p.name}에서 ${fmtDist(far)} 떨어져 있습니다. 그래도 실측할까요?`)) return;
+  // GNSS로 처음 실측할 때 지리원 아이디가 비어 있으면 한 번 물어봄 (관측기록에 남김). 자동 실측 중에는 묻지 않음
+  if (GN.on && !set.ngii && !auto) {
     const v = prompt("관측기록에 남길 국토지리정보원(VRS) 아이디를 넣어 주세요.\n비워 두고 확인을 누르면 아이디 없이 진행합니다.", "");
     if (v === null) return;
     if (v.trim()) { set.ngii = v.trim(); DB.set("set", set); if ($("setNgii")) $("setNgii").value = set.ngii; }
   }
   audioOn(); SND.start();
-  measuring = true; measStop = false;
+  measuring = true; measStop = false; AUTO.run = auto ? id : null;
+  const anchor = { lat: me.lat, lon: me.lon }, L0 = autoLims();   // 자동 실측 : 시작 자리에서 폴대가 움직이면 멈춤
   const got = [], qs = [], rule = ruleOn(), need = obsSec(), t0 = nowStr(), T0 = Date.now();
   let left = need, waited = 0, wasBad = false, lastBad = [];
   const btn = $("pMeas"); btn.textContent = `📐 실측 중… ${left}초 (점 위에 그대로 · 누르면 멈춤)`;
@@ -1312,9 +1357,10 @@ $("pMeas").onclick = () => {
     if (rule) { const q = qc(me); if (!q || !q.ok) { lastBad = q ? q.bad : ["GNSS 위치 없음"]; return false; } qs.push(q); }
     got.push({ ...me }); return true;
   };
-  const end = () => { clearInterval(t); measuring = false; btn.textContent = measLabel(); };
+  const end = () => { clearInterval(t); measuring = false; AUTO.run = null; AUTO.buf = []; btn.textContent = measLabel(); };
   const t = setInterval(() => {
     if (measStop) { end(); toast("실측을 멈췄습니다"); return; }
+    if (auto && me && haversine(me, anchor) > L0.move) { end(); SND.fail(); toast("폴대가 움직여 자동 실측을 멈췄습니다. 다시 가만히 서면 처음부터 잽니다", 4500); return; }
     if (take()) {
       if (wasBad) { SND.fixGot(); wasBad = false; }
       left--; btn.textContent = `📐 실측 중… ${left}초 (점 위에 그대로 · 누르면 멈춤)`;
@@ -1345,9 +1391,16 @@ $("pMeas").onclick = () => {
       rcv: GN.how || "", ngii: set.ngii || "", geoid: GEOID_NAME[set.geoid || "rcv"],
       alt: avg(nums("alt"), 3), sep: avg(nums("sep"), 3), hEll: nums("alt").length && nums("sep").length ? +(avg(nums("alt"), 4) + avg(nums("sep"), 4)).toFixed(3) : "" }
       : { t0, t1: nowStr(), dur: Math.round((Date.now() - T0) / 1000) };
-    obs.datum = DATUM_NAME(p.datum); obs.origin = p.originName;
+    obs.datum = DATUM_NAME(p.datum); obs.origin = p.originName; obs.how = auto ? "자동" : "수동";
     const nm = { X: +m.X.toFixed(4), Y: +m.Y.toFixed(4), dX: +dX.toFixed(4), dY: +dY.toFixed(4), d: +Math.hypot(dX, dY).toFixed(4), acc, n: got.length, fixes, time: nowStr(),
       src: gn ? "GNSS" : "휴대폰", fix: gn ? FIXNAME[got[got.length - 1].fix] : "", sats: gn ? (obs.satsMin !== "" ? obs.satsMin : got[got.length - 1].sats || "") : "", obs };
+    // 자동 실측인데 성과와 30cm 넘게 차이 나면 표지 옆에 서 있었던 것으로 보고 결과로 넣지 않음 (이력에만 남김)
+    if (auto && L0.reject && nm.d > L0.reject) {
+      const rr = rec(id); rr.measAll = rr.measAll || (rr.meas ? [rr.meas] : []); nm.note = "자동 · 점 위 아님(채택 안 함)"; rr.measAll.push(nm);
+      saveNow(); AUTO.skip = { id, at: { lat: me.lat, lon: me.lon } }; SND.fail();
+      toast(`${p.name}에서 ${nm.d.toFixed(2)}m 떨어진 자리라 점 위가 아닌 것 같아 결과로 넣지 않았습니다 (이력에는 남김). 표지 위에 세우면 다시 잽니다`, 7000);
+      return;
+    }
     // 다시 찍으면 지난 실측은 이력으로 남기고, 가장 최근 것을 채택 (카드에서 다른 회차로 바꿀 수 있음)
     const rr = rec(id); rr.measAll = rr.measAll || (rr.meas ? [rr.meas] : []); rr.measAll.push(nm); rr.meas = nm;
     if (S.mode === "insp") rr.status = judgeOf(nm) ? "적합" : "초과";
@@ -1372,7 +1425,7 @@ function showMeas() {
   if (all.length > 1) {
     el.innerHTML += `<div class="hist"><b>실측 ${all.length}회</b> <small>(누르면 그 회차를 결과로 채택)</small>` + all.map((x, i) => {
       const jj = judgeOf(x), on = x === m || (x.time === m.time && x.d === m.d);
-      return `<button data-adopt="${i}" class="${on ? "on" : ""}">${i + 1}회 ${x.time.slice(11)} · ${x.d.toFixed(ins ? 4 : 3)}m${jj === null ? "" : jj ? " ✔" : " ✖"}${on ? " · 채택" : ""}</button>`;
+      return `<button data-adopt="${i}" class="${on ? "on" : ""}">${i + 1}회 ${x.time.slice(11)} · ${x.d.toFixed(ins ? 4 : 3)}m${jj === null ? "" : jj ? " ✔" : " ✖"}${x.note ? " · 점 위 아님" : ""}${on ? " · 채택" : ""}</button>`;
     }).join("") + `</div>`;
   }
 }
@@ -2027,6 +2080,11 @@ async function gnOff(msg) {
 
 $("gnBleBtn").onclick = gnBle; $("gnSerBtn").onclick = gnSerial; $("gnOffBtn").onclick = () => gnOff();
 $("gnFixOnly").onchange = async () => { set.fixOnly = $("gnFixOnly").checked; await DB.set("set", set); if (cur && !measuring) $("pMeas").textContent = measLabel(); };
+$("setAuto").onchange = async () => {
+  set.auto = $("setAuto").checked; AUTO.buf = []; AUTO.skip = null; await DB.set("set", set);
+  if (set.auto) audioOn();
+  toast(set.auto ? "자동 실측 켬 : 안 잰 점 가까이(RTK 1m 안)에서 3초 가만히 서 있으면 저절로 잽니다" : "자동 실측 끔", 5000);
+};
 $("setGeoid").onchange = async () => { set.geoid = $("setGeoid").value; await DB.set("set", set); toast(`지오이드 : ${GEOID_NAME[set.geoid]} (관측기록에 남습니다)`); };
 $("setDatum").onchange = async () => { set.datum = $("setDatum").value; await DB.set("set", set); toast(`기본 측지계 : ${DATUM_NAME(set.datum)} (새로 불러오는 파일부터)`); };
 $("setNgii").onchange = async () => { set.ngii = $("setNgii").value.trim(); await DB.set("set", set); toast(set.ngii ? `지리원 아이디 ${set.ngii} 저장 (관측기록에 남습니다)` : "지리원 아이디를 비웠습니다"); };
@@ -2084,7 +2142,7 @@ function obsRows(D = S) {
     all.forEach((x, i) => {
       if (x.src !== "GNSS") return; const o = x.obs || {};
       out.push({ "기준점번호": p.formNo || p.no || p.name, "기준점명": p.name, "회차": i + 1, "채택": m && x.time === m.time && x.d === m.d ? "○" : "",
-        "관측시작": o.t0 || "", "관측종료": o.t1 || x.time, "관측시간(초)": o.dur ?? "", "평균한 초": x.n, "조건미달 대기(초)": o.wait ?? "", "규정조건": o.rule || "",
+        "실측 방식": o.how || "수동", "비고": x.note || "", "관측시작": o.t0 || "", "관측종료": o.t1 || x.time, "관측시간(초)": o.dur ?? "", "평균한 초": x.n, "조건미달 대기(초)": o.wait ?? "", "규정조건": o.rule || "",
         "측위": x.fix || "", "위성수 최소": o.satsMin ?? x.sats ?? "", "위성수 평균": o.satsAvg ?? "", "위성 기준": o.satsHi || "",
         "PDOP 최대": o.pdopMax ?? "", "보정지연 최대(초)": o.ageMax ?? "", "수평정밀도 최대(m)": o.hMax ?? "", "수직정밀도 최대(m)": o.vMax ?? "",
         "수신기": o.rcv || "", "지리원 아이디": o.ngii || "",
@@ -2324,7 +2382,7 @@ $("btnReset").onclick = async () => {
   } catch (e) { toast("휴대폰 저장소를 열지 못했습니다 : " + e.message, 5000); }
   $("keyInfo").textContent = CFG.key ? (set.key === CFG.key ? "공용 키(config.js)를 쓰는 중입니다." : "이 휴대폰에서 직접 넣은 키를 쓰는 중입니다. 칸을 비우고 저장하면 공용 키(config.js)로 돌아갑니다.") : "config.js 공용 키가 없습니다.";
   $("setOrigin").value = set.origin; $("setKey").value = set.key; $("setDomain").value = set.domain || ""; $("setTol").value = set.tol || ""; $("setBk").value = set.bk ?? "10"; $("setObs").value = set.obs || "10"; $("setSound").checked = set.sound !== false; $("gnFixOnly").checked = set.fixOnly !== false; $("setNgii").value = set.ngii || "";
-  $("setDatum").value = set.datum || ""; $("setGeoid").value = set.geoid || "rcv";
+  $("setDatum").value = set.datum || ""; $("setGeoid").value = set.geoid || "rcv"; $("setAuto").checked = !!set.auto;
   buildLayers(); drawPoints(); fitAll(); startGPS();
   // 예전 버전에서 불러온 자료면 (폐기 점이 빠져 있음) 다시 불러오라고 알림
   if (S.rows && S.points.length < S.rows.length)
