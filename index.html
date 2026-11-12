@@ -734,16 +734,21 @@ textarea{width:100%;min-height:62px;border:1px solid var(--line);border-radius:1
 .hist button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 10px;font-size:13px;text-align:left}
 .hist button.on{border:2px solid var(--navy);font-weight:700}
 .gpsrec{font-size:12px;color:var(--mut);margin-top:4px}
-.mnt{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
-.mnt tr:first-child th:nth-child(1){width:9%}.mnt tr:first-child th:nth-child(2){width:27%}.mnt tr:first-child th:nth-child(4){width:28%}
-.mnt th{white-space:nowrap}
-.mnt th,.mnt td{border:1px solid var(--line);padding:6px 5px;text-align:center}
-.mnt th{background:#F4F6FA;font-weight:600;font-size:12px}
-.mnt input{width:100%;box-sizing:border-box;font-size:17px;padding:8px 4px;text-align:center;border:1.5px solid var(--navy);border-radius:6px}
-.mnl{width:100%;border-collapse:collapse;font-size:13px;background:#fff}
-.mnl th,.mnl td{border:1px solid var(--line);padding:6px 4px;text-align:center}
-.mnl th{background:#1F2A55;color:#fff;font-weight:600}
-.mnl tr[data-id]{cursor:pointer}
+/* 수동 검사 표 : 점마다 두 줄(X·Y). 번호 칸에 연결교차·판정 */
+.mnsum{position:sticky;top:-14px;z-index:2;background:var(--bg,#F4F6FA);padding:6px 0 8px;display:flex;gap:6px;flex-wrap:wrap}
+.mnsum span{background:#fff;border:1px solid var(--line);border-radius:16px;padding:5px 11px;font-size:13px}
+.mng{width:100%;border-collapse:collapse;table-layout:fixed;background:#fff;font-size:14px}
+.mng th{background:#1F2A55;color:#fff;font-weight:600;font-size:12px;padding:6px 2px;border:1px solid #1F2A55;white-space:nowrap}
+.mng td{border:1px solid var(--line);padding:4px 3px;text-align:center;font-variant-numeric:tabular-nums}
+.mng tr.y td{border-bottom:2px solid #9AA3B8}
+.mng td.no{font-weight:800;font-size:17px;color:#1F2A55;line-height:1.25;word-break:break-all}
+.mng td.no small{display:block;font-weight:700;font-size:12px;margin-top:3px}
+.mng td.ax{color:var(--mut);font-size:12px}
+.mng input{width:100%;box-sizing:border-box;font-size:16px;padding:7px 2px;text-align:center;border:1.5px solid #B9C0D0;border-radius:6px;font-variant-numeric:tabular-nums}
+.mng input:focus{border-color:#1F2A55;outline:none;background:#F2F5FF}
+.mng tr.ok td.no{background:#E7F6EE}.mng tr.ng td.no{background:#FDECEC}
+.mng tr.hit td{animation:hit 1.6s}
+@keyframes hit{0%{background:#FFF3B0}100%{background:inherit}}
 /* 전체 화면 패널 */
 .panel{position:fixed;inset:0;z-index:1200;background:var(--bg);display:none;flex-direction:column}
 .panel.on{display:flex}
@@ -768,8 +773,9 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
 .chips button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
 #toast{position:fixed;left:50%;top:calc(140px + env(safe-area-inset-top));transform:translateX(-50%);z-index:2000;background:rgba(27,35,64,.92);color:#fff;
   padding:10px 16px;border-radius:20px;font-size:14px;display:none;max-width:86vw;text-align:center}
-.lab{background:none;border:0;box-shadow:none;font-weight:700;font-size:12px;color:#fff;
-  text-shadow:0 0 3px #000,0 0 3px #000}
+.lab{background:rgba(31,42,85,.88);border:1.5px solid #fff;border-radius:9px;box-shadow:0 1px 3px rgba(0,0,0,.35);
+  font-weight:800;font-size:14px;color:#fff;padding:1px 7px;line-height:1.35}
+.lab.ok{background:rgba(46,158,107,.95)}.lab.ng{background:rgba(229,72,77,.95)}
 .lab:before{display:none}
 .empty{position:fixed;left:16px;right:16px;top:40%;z-index:900;background:#fff;border-radius:14px;padding:20px;text-align:center;
   box-shadow:0 2px 10px rgba(0,0,0,.2)}
@@ -923,7 +929,7 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
       <p class="help">이 휴대폰에 저장된 모든 작업(점·조사기록·사진)을 지웁니다. 작업 하나만 지우려면 위 작업 목록의 '삭제'를 쓰세요.</p>
       <div class="row"><button class="btn" id="btnReset" style="color:var(--red)">전체 지우기</button></div>
     </div>
-    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.12 13:29</p>
+    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.12 13:37</p>
   </div>
 </div>
 
@@ -940,24 +946,10 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
 <div class="panel" id="pnManual">
   <div class="phead"><button class="ibtn" data-close>←</button><h3>✍️ 수동 검사</h3></div>
   <div class="pbody">
+    <div id="mnSum" class="mnsum"></div>
     <p class="help" id="mnHelp"></p>
-    <div class="card">
-      <div class="map2"><span>점 번호</span><input type="text" id="mnNo" list="mnList" inputmode="numeric" autocomplete="off" placeholder="예) 4921"></div>
-      <datalist id="mnList"></datalist>
-      <div class="row"><button class="btn" id="mnPrev">◀ 앞 점</button><button class="btn" id="mnNext">뒤 점 ▶</button><button class="btn" id="mnTodo">미입력 점</button></div>
-      <div id="mnBox" style="display:none;margin-top:10px">
-        <div id="mnName" style="font-weight:700;font-size:16px;margin-bottom:6px"></div>
-        <table class="mnt">
-          <tr><th></th><th>측량성과</th><th>검사측량성과</th><th>오차량<br><small>(성과−검사)</small></th></tr>
-          <tr><th>X</th><td id="mnSX"></td><td><input type="text" id="mnX" inputmode="decimal" autocomplete="off"></td><td id="mnEX"></td></tr>
-          <tr><th>Y</th><td id="mnSY"></td><td><input type="text" id="mnY" inputmode="decimal" autocomplete="off"></td><td id="mnEY"></td></tr>
-        </table>
-        <div id="mnRes" style="margin:10px 0 4px;font-size:15px"></div>
-        <p class="help" id="mnFull"></p>
-        <div class="row"><button class="btn pri" id="mnSave">저장하고 다음 점 ▶</button></div>
-      </div>
-    </div>
-    <div id="mnTable"></div>
+    <div class="map2" style="margin:6px 0 10px"><span>점 찾기</span><input type="text" id="mnNo" inputmode="numeric" autocomplete="off" placeholder="점 번호 → 그 줄로 이동"></div>
+    <div id="mnGrid"></div>
   </div>
 </div>
 <div id="toast"></div>
@@ -1205,12 +1197,18 @@ function styleFor(p, sel) {
 const onMap = (p) => !p.noMap;
 function drawPoints() {
   ptLayer.clearLayers(); markers = {};
-  const showLab = map.getZoom() >= 16;
-  S.points.filter(onMap).filter(shown).forEach(p => {
+  const vis = S.points.filter(onMap).filter(shown);
+  const showLab = map.getZoom() >= (vis.length <= 60 ? 14 : 16);   // 점이 적으면 조금 멀리서도 번호를 보여 줌
+  vis.forEach(p => {
     // bubblingMouseEvents:false → 점을 누른 게 지도 클릭(카드 닫기)으로 번지지 않게
     const m = L.circleMarker([p.lat, p.lon], Object.assign(styleFor(p, p.id === cur), { bubblingMouseEvents: false }))
       .on("click", e => { L.DomEvent.stop(e); openPoint(p.id); });
-    if (showLab) m.bindTooltip(esc(p.name), { permanent: true, direction: "right", offset: [8, 0], className: "lab" });
+    if (showLab) {
+      // 검사 작업이면 양식 번호와 판정(✔ 적합 · ✖ 초과)을 같이
+      const r = S.recs[p.id], j = S.mode === "insp" && r && r.meas ? judgeOf(r.meas) : null;
+      const txt = esc(S.mode === "insp" ? String(p.formNo || p.name) : p.name) + (j === null ? "" : j ? " ✔" : " ✖");
+      m.bindTooltip(txt, { permanent: true, direction: "right", offset: [10, 0], className: "lab" + (j === null ? "" : j ? " ok" : " ng") });
+    }
     m.addTo(ptLayer); markers[p.id] = m;
   });
   updateProg();
@@ -2406,7 +2404,6 @@ const mnMod = () => (S.form && S.form.modv) || 10;
 const mnShort = (v) => modOf(v, mnMod());
 const mnPts = () => S.points.filter(p => isFinite(p.X) && isFinite(p.Y));
 const mnKey = (p) => String(p.formNo || p.name);
-let mnCur = null;
 function mnParse(s, full) {
   const v = parseFloat(String(s).replace(/,/g, "").trim()); if (!isFinite(v)) return NaN;
   if (Math.abs(v) >= 10000) return v;                         // 전체 좌표로 넣은 경우
@@ -2418,75 +2415,92 @@ function mnFind(q) {
   q = String(q).trim(); if (!q) return null; const L = mnPts();
   return L.find(p => mnKey(p) === q) || L.find(p => p.name === q) || L.find(p => mnKey(p).endsWith(q)) || L.find(p => p.name.includes(q)) || null;
 }
-function mnTodo(after) {
-  const L = mnPts(), i0 = after ? L.findIndex(p => p.id === after) + 1 : 0;
-  for (let k = 0; k < L.length; k++) { const p = L[(i0 + k) % L.length]; if (!rec(p.id).meas) return p; }
-  return null;
-}
+const f3 = (v) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(3);
 function openManual(id) {
   if (S.mode !== "insp") { toast("수동 검사는 검사 작업(측량성과비교표)에서 씁니다"); return; }
-  $("mnHelp").innerHTML = `측량성과는 끝자리만 보여 줍니다 (나눌값 ${mnMod()} · 앞자리는 같음). 검사측량성과도 <b>끝자리만</b> 넣으면 됩니다. 전체 좌표를 넣어도 됩니다. 허용 ±${S.tol}m`;
-  $("mnList").innerHTML = mnPts().map(p => `<option value="${esc(mnKey(p))}">${esc(p.name !== mnKey(p) ? p.name : p.addr || "")}</option>`).join("");
-  $("pnManual").classList.add("on"); openLayer("manual");
-  mnShow(id || mnCur || (mnTodo() || mnPts()[0] || {}).id); mnTable();
+  $("mnHelp").innerHTML = `측량성과는 끝자리만 보입니다 (나눌값 ${mnMod()} · 앞자리는 같음). 검사측량성과도 <b>끝자리만</b> 넣으세요 (전체 좌표도 됨). `
+    + `X 엔터 → Y, Y 엔터 → 다음 점. 넣는 즉시 저장되고, 두 칸을 다 지우면 그 점 입력이 취소됩니다.`;
+  mnGrid(); $("pnManual").classList.add("on"); openLayer("manual");
+  const p = id ? P(id) : mnPts().find(q => !rec(q.id).meas);
+  if (p) setTimeout(() => mnGo(p.id, true), 80);
 }
-function mnShow(id) {
-  const p = id ? P(id) : null; mnCur = p ? p.id : null;
-  $("mnBox").style.display = p ? "" : "none"; if (!p) return;
-  const m = rec(p.id).meas;
-  $("mnNo").value = mnKey(p);
-  $("mnName").innerHTML = `${esc(mnKey(p))}${p.name !== mnKey(p) ? ` · ${esc(p.name)}` : ""}${m ? ` <small style="color:var(--mut)">(${m.src === "수동입력" ? "입력됨" : "실측됨"})</small>` : ""}`;
-  $("mnSX").textContent = mnShort(p.X).toFixed(3); $("mnSY").textContent = mnShort(p.Y).toFixed(3);
-  $("mnX").value = m ? mnShort(m.X).toFixed(3) : ""; $("mnY").value = m ? mnShort(m.Y).toFixed(3) : "";
-  mnCalc(); setTimeout(() => { $("mnX").focus(); $("mnX").select(); }, 60);
+// 표 그리기 : 점마다 X줄·Y줄. 번호 칸(두 줄 합침)에 연결교차와 판정
+function mnGrid() {
+  const L = mnPts();
+  $("mnGrid").innerHTML = `<table class="mng"><colgroup><col style="width:21%"><col style="width:7%"><col style="width:21%"><col style="width:29%"><col style="width:22%"></colgroup>`
+    + `<tr><th>번호</th><th></th><th>측량성과</th><th>검사측량성과</th><th>오차량</th></tr>`
+    + L.map(p => {
+      const m = rec(p.id).meas, vx = m ? mnShort(m.X).toFixed(3) : "", vy = m ? mnShort(m.Y).toFixed(3) : "";
+      return `<tr data-id="${p.id}" class="x"><td class="no" rowspan="2">${esc(mnKey(p))}<small></small></td><td class="ax">X</td><td>${mnShort(p.X).toFixed(3)}</td>`
+        + `<td><input data-k="x" inputmode="decimal" autocomplete="off" value="${vx}"></td><td class="ex"></td></tr>`
+        + `<tr data-id="${p.id}" class="y"><td class="ax">Y</td><td>${mnShort(p.Y).toFixed(3)}</td>`
+        + `<td><input data-k="y" inputmode="decimal" autocomplete="off" value="${vy}"></td><td class="ey"></td></tr>`;
+    }).join("") + `</table>`;
+  L.forEach(p => mnRow(p.id)); mnSum();
 }
-function mnCalc() {
-  const p = P(mnCur); if (!p) return null;
-  const X = mnParse($("mnX").value, p.X), Y = mnParse($("mnY").value, p.Y);
-  if (!isFinite(X) || !isFinite(Y)) {
-    $("mnEX").textContent = isFinite(X) ? fm(p.X - X) : ""; $("mnEY").textContent = isFinite(Y) ? fm(p.Y - Y) : "";
-    $("mnRes").innerHTML = `<span style="color:var(--mut)">검사측량성과 X·Y를 넣으세요</span>`; $("mnFull").textContent = ""; return null;
-  }
-  const eX = p.X - X, eY = p.Y - Y, d = Math.hypot(eX, eY), ok = d <= S.tol + 1e-9;
-  $("mnEX").textContent = fm(eX); $("mnEY").textContent = fm(eY);
-  $("mnRes").innerHTML = `연결교차 <b>${d.toFixed(3)}m</b> → <b style="color:${ok ? "#2E9E6B" : "#E5484D"}">${ok ? "적합" : "초과"}</b> <small>(±${S.tol}m)</small>`;
-  $("mnFull").innerHTML = `검사측량성과 전체 : X ${X.toFixed(3)} · Y ${Y.toFixed(3)}` + (d > 1 ? `<br><b style="color:#E5484D">차이가 1m 넘습니다. 끝자리를 맞게 넣었는지 확인하세요</b>` : "");
+const mnRows = (id) => $("mnGrid").querySelectorAll(`tr[data-id="${id}"]`);
+// 한 점 줄 다시 계산해서 표시 (지금 칸에 있는 값 기준)
+function mnRow(id) {
+  const p = P(id), [rx, ry] = mnRows(id); if (!p || !rx) return null;
+  const ix = rx.querySelector("input"), iy = ry.querySelector("input");
+  const X = mnParse(ix.value, p.X), Y = mnParse(iy.value, p.Y);
+  rx.querySelector(".ex").textContent = isFinite(X) ? f3(p.X - X) : "";
+  ry.querySelector(".ey").textContent = isFinite(Y) ? f3(p.Y - Y) : "";
+  const no = rx.querySelector(".no small"); rx.classList.remove("ok", "ng");
+  if (!isFinite(X) || !isFinite(Y)) { no.innerHTML = ""; return null; }
+  const d = Math.hypot(p.X - X, p.Y - Y), ok = d <= S.tol + 1e-9;
+  rx.classList.add(ok ? "ok" : "ng");
+  no.innerHTML = `<span style="color:${ok ? "#2E9E6B" : "#E5484D"}">${d.toFixed(3)}<br>${ok ? "적합" : "초과"}</span>${d > 1 ? `<br><span style="color:#E5484D">끝자리 확인</span>` : ""}`;
   return { X, Y, d };
 }
-function mnTable() {
+function mnSum() {
   const L = mnPts(), done = L.filter(p => rec(p.id).meas), ok = done.filter(p => judgeOf(rec(p.id).meas)).length;
-  $("mnTable").innerHTML = `<p class="help"><b>${done.length} / ${L.length}점</b> 입력·실측 · 적합 ${ok} · 초과 ${done.length - ok} <small>(줄을 누르면 그 점으로)</small></p>`
-    + (done.length ? `<table class="mnl"><tr><th>번호</th><th>X오차</th><th>Y오차</th><th>연결교차</th><th>판정</th><th>방식</th></tr>` + done.map(p => {
-      const m = rec(p.id).meas, j = judgeOf(m);
-      return `<tr data-id="${p.id}"><td>${esc(mnKey(p))}</td><td>${(-m.dX).toFixed(3)}</td><td>${(-m.dY).toFixed(3)}</td><td><b>${m.d.toFixed(3)}</b></td>`
-        + `<td style="color:${j ? "#2E9E6B" : "#E5484D"};font-weight:700">${j ? "적합" : "초과"}</td><td>${m.src === "수동입력" ? "입력" : "실측"}</td></tr>`;
-    }).join("") + `</table>` : "");
+  $("mnSum").innerHTML = `<span><b>${done.length}</b> / ${L.length}점</span><span style="color:#2E9E6B">적합 <b>${ok}</b></span>`
+    + `<span style="color:#E5484D">초과 <b>${done.length - ok}</b></span><span>남은 점 <b>${L.length - done.length}</b></span>`;
 }
-$("mnTable").onclick = (e) => { const tr = e.target.closest("tr[data-id]"); if (tr) { mnShow(tr.dataset.id); $("pnManual").querySelector(".pbody").scrollTop = 0; } };
-$("mnX").oninput = $("mnY").oninput = () => mnCalc();
-$("mnX").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("mnY").focus(); $("mnY").select(); } };
-$("mnY").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("mnSave").click(); } };
-$("mnNo").onchange = () => { const p = mnFind($("mnNo").value); if (p) mnShow(p.id); else toast(`'${$("mnNo").value}' 점을 찾지 못했습니다`); };
-$("mnNo").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("mnNo").blur(); } };
-const mnStep = (k) => { const L = mnPts(); if (!L.length) return; const i = L.findIndex(p => p.id === mnCur); mnShow(L[(i + k + L.length) % L.length].id); };
-$("mnPrev").onclick = () => mnStep(-1); $("mnNext").onclick = () => mnStep(1);
-$("mnTodo").onclick = () => { const p = mnTodo(mnCur); if (p) mnShow(p.id); else toast("입력 안 한 점이 없습니다"); };
-$("mnSave").onclick = () => {
-  const p = P(mnCur), c = mnCalc(); if (!p || !c) { toast("검사측량성과 X·Y를 넣으세요"); return; }
-  const rr = rec(p.id), old = rr.meas;
-  if (!(old && Math.abs(old.X - c.X) < 5e-4 && Math.abs(old.Y - c.Y) < 5e-4)) {   // 같은 값을 다시 저장하면 이력에 또 쌓지 않음
-    const dX = c.X - p.X, dY = c.Y - p.Y, t = nowStr();
-    const nm = { X: +c.X.toFixed(4), Y: +c.Y.toFixed(4), dX: +dX.toFixed(4), dY: +dY.toFixed(4), d: +Math.hypot(dX, dY).toFixed(4), acc: null, n: 1, fixes: 1, time: t,
-      src: "수동입력", fix: "", sats: "", obs: { how: "수동입력", t0: t, t1: t } };
-    rr.measAll = rr.measAll || (old ? [old] : []); rr.measAll.push(nm); rr.meas = nm;
-    rr.status = judgeOf(nm) ? "적합" : "초과"; rr.time = t;
-    saveNow(); countBackup(); drawPoints(); renderList();
-    audioOn(); (judgeOf(nm) ? SND.ok : SND.bad)();
-    toast(`${mnKey(p)} 연결교차 ${nm.d.toFixed(3)}m → ${rr.status}`, 2500);
+// 저장 : 두 칸이 다 맞으면 저장(같은 값이면 그대로), 두 칸 다 비우면 이 점의 직접 입력을 취소
+function mnCommit(id) {
+  const p = P(id), [rx, ry] = mnRows(id); if (!p || !rx) return;
+  const ix = rx.querySelector("input"), iy = ry.querySelector("input"), rr = rec(id), old = rr.meas;
+  if (!ix.value.trim() && !iy.value.trim()) {
+    if (old && old.src === "수동입력") {
+      rr.measAll = (rr.measAll || []).filter(x => !(x.time === old.time && x.X === old.X && x.Y === old.Y && x.src === "수동입력"));
+      rr.meas = rr.measAll[rr.measAll.length - 1] || null;
+      rr.status = rr.meas ? (judgeOf(rr.meas) ? "적합" : "초과") : "미조사"; rr.time = nowStr();
+      saveNow(); drawPoints(); renderList(); mnSum(); toast(`${mnKey(p)} 입력을 지웠습니다`);
+      if (rr.meas) { ix.value = mnShort(rr.meas.X).toFixed(3); iy.value = mnShort(rr.meas.Y).toFixed(3); mnRow(id); }
+    }
+    return;
   }
-  mnTable();
-  const nx = mnTodo(p.id); if (nx) mnShow(nx.id); else { mnShow(p.id); toast("모든 점을 입력했습니다. 메뉴에서 ZIP 저장하면 측량성과비교표가 채워집니다", 5000); }
-};
+  const c = mnRow(id); if (!c) return;
+  if (old && Math.abs(old.X - c.X) < 5e-4 && Math.abs(old.Y - c.Y) < 5e-4) return;   // 같은 값이면 이력에 또 쌓지 않음
+  const dX = c.X - p.X, dY = c.Y - p.Y, t = nowStr();
+  const nm = { X: +c.X.toFixed(4), Y: +c.Y.toFixed(4), dX: +dX.toFixed(4), dY: +dY.toFixed(4), d: +Math.hypot(dX, dY).toFixed(4), acc: null, n: 1, fixes: 1, time: t,
+    src: "수동입력", fix: "", sats: "", obs: { how: "수동입력", t0: t, t1: t } };
+  rr.measAll = rr.measAll || (old ? [old] : []); rr.measAll.push(nm); rr.meas = nm;
+  rr.status = judgeOf(nm) ? "적합" : "초과"; rr.time = t;
+  saveNow(); countBackup(); drawPoints(); renderList(); mnSum();
+  audioOn(); (judgeOf(nm) ? SND.ok : SND.bad)();
+}
+// 그 점 줄로 이동해서 X 칸에 커서
+function mnGo(id, quiet) {
+  const [rx] = mnRows(id); if (!rx) return;
+  rx.scrollIntoView({ block: "center", behavior: quiet ? "auto" : "smooth" });
+  if (!quiet) { rx.classList.remove("hit"); void rx.offsetWidth; rx.classList.add("hit"); }
+  const i = rx.querySelector("input"); i.focus({ preventScroll: true }); i.select();
+}
+$("mnGrid").addEventListener("input", (e) => { const tr = e.target.closest("tr[data-id]"); if (tr) mnRow(tr.dataset.id); });
+$("mnGrid").addEventListener("change", (e) => { const tr = e.target.closest("tr[data-id]"); if (tr) mnCommit(tr.dataset.id); });
+$("mnGrid").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || !e.target.matches("input")) return;
+  e.preventDefault();
+  const all = [...$("mnGrid").querySelectorAll("input")], i = all.indexOf(e.target);
+  if (e.target.dataset.k === "y") mnCommit(e.target.closest("tr").dataset.id);
+  const nx = all[i + 1];
+  if (nx) { nx.focus({ preventScroll: true }); nx.select(); nx.closest("tr").scrollIntoView({ block: "center", behavior: "smooth" }); } else e.target.blur();
+});
+$("mnNo").onchange = () => { const p = mnFind($("mnNo").value); if (p) mnGo(p.id); else toast(`'${$("mnNo").value}' 점을 찾지 못했습니다`); };
+$("mnNo").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("mnNo").blur(); } };
 $("pManual").onclick = () => { const id = cur; closeLayer("sheet", () => openManual(id)); };
 $("btnManual").onclick = () => closeLayer("menu", () => openManual());
 $("btnReset").onclick = async () => {
