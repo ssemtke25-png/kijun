@@ -683,7 +683,7 @@ button{font:inherit;cursor:pointer}
 .ibtn{background:none;border:0;color:#fff;font-size:20px;width:38px;height:38px;border-radius:8px}
 .ibtn:active{background:rgba(255,255,255,.15)}
 #map{position:fixed;top:52px;left:0;right:0;bottom:0}
-#gps{position:fixed;top:62px;left:10px;z-index:900;background:#fff;border-radius:18px;padding:5px 11px;font-size:12px;
+#gps{position:fixed;top:62px;left:10px;z-index:900;background:#fff;border-radius:18px;padding:5px 11px;font-size:12px;max-width:calc(100vw - 84px);line-height:1.45;
   box-shadow:0 1px 4px rgba(0,0,0,.25);color:var(--mut)}
 #gps b{color:var(--ink)}
 .fab{position:fixed;right:12px;z-index:900;width:48px;height:48px;border-radius:50%;border:0;background:#fff;
@@ -844,8 +844,14 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
       <p class="help">수신기가 블루투스로 내보내는 위치(NMEA)를 직접 받습니다. 연결 중에는 휴대폰 위치 대신 수신기 위치를 씁니다. 수신기에서 "NMEA(GGA) 출력"이 켜져 있어야 합니다.</p>
       <div class="row"><button class="btn pri" id="gnBleBtn">블루투스(BLE)</button><button class="btn pri" id="gnSerBtn">시리얼(클래식·USB)</button></div>
       <div class="map2"><span>속도</span><select id="gnBaud"><option>9600</option><option>38400</option><option selected>115200</option></select>
-        <span>실측 조건</span><label style="font-size:14px"><input type="checkbox" id="gnFixOnly" checked> RTK 고정해일 때만 평균에 넣기</label></div>
+        <span>지리원 아이디</span><input type="text" id="setNgii" placeholder="국토지리정보원 VRS 아이디" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <span>지오이드</span><select id="setGeoid"><option value="rcv">수신기 설정 그대로</option><option value="KNGeoid24">KNGeoid24</option><option value="KNGeoid18">KNGeoid18</option><option value="none">적용 안 함 (타원체고)</option></select>
+        <span>실측 조건</span><label style="font-size:14px"><input type="checkbox" id="gnFixOnly" checked> 규정 조건을 지킬 때만 관측</label></div>
+      <p class="help">규정 조건 : RTK 고정해 · 고도각 15° 이상 위성 5개 이상 · PDOP 3 미만 · 보정정보 지연 5초 미만 · 정밀도 수평 3cm·수직 5cm 이내. 조건이 깨지면 관측 시간이 멈췄다가 다시 맞으면 이어서 셉니다. 이때 관측 시간은 최소 15초입니다.</p>
+      <p class="help">지리원 아이디는 관측기록에 남기는 용도입니다(비밀번호는 넣지 않습니다). VRS 접속은 지금은 수신기·컨트롤러에서 합니다.</p>
+      <p class="help">지오이드는 수신기·컨트롤러에 맞춰 둔 모델을 고르면 관측기록에 남습니다. 표고·지오이드고는 수신기가 보낸 값을 그대로 적습니다. 연결교차는 수평(X·Y)만 비교하므로 지오이드는 판정에 영향이 없습니다.</p>
       <p class="help" id="gnStat">연결 안 됨</p>
+      <div id="gnSky" style="display:none;gap:10px;align-items:center;margin:6px 0"></div>
       <pre id="gnLog" style="background:#0F1B3D;color:#9FE3B4;font-size:11px;border-radius:8px;padding:8px;white-space:pre-wrap;word-break:break-all;max-height:150px;overflow:auto;margin:6px 0">(아직 받은 데이터 없음)</pre>
       <div class="row"><button class="btn" id="gnOffBtn">연결 끊기</button></div>
       <p class="help" id="gnSupport"></p>
@@ -872,6 +878,8 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
           <option value="EPSG:5187" selected>동부원점 (129°)</option>
           <option value="EPSG:5188">동해원점 (131°)</option>
         </select>
+        <span>기본 측지계</span>
+        <select id="setDatum"><option value="">세계측지계 (GRS80)</option><option value="Bessel">지역측지계 (Bessel · 참고용)</option></select>
         <span>브이월드 키</span>
         <input type="text" id="setKey" placeholder="인증키 (위성·지적도)">
         <span>키 등록 URL</span>
@@ -879,7 +887,7 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
         <span>소리·진동</span>
         <label style="font-size:14px"><input type="checkbox" id="setSound" checked> 실측 끝·GNSS 연결/끊김 때 알림</label>
         <span>관측 시간</span>
-        <select id="setObs"><option value="10">10초</option><option value="20">20초</option><option value="30">30초</option><option value="40">40초</option><option value="50">50초</option><option value="60">60초</option></select>
+        <select id="setObs"><option value="10">10초</option><option value="15">15초</option><option value="20">20초</option><option value="30">30초</option><option value="40">40초</option><option value="50">50초</option><option value="60">60초</option></select>
         <span>허용 편차(m)</span>
         <input type="text" id="setTol" inputmode="decimal" placeholder="예) 0.03  (비우면 판정 안 함)">
       </div>
@@ -888,7 +896,8 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
       <p class="help">지적도는 브이월드 키에 등록한 서비스 URL과 같아야 나옵니다. 비워 두면 지금 주소를 씁니다.</p>
       <div class="row"><button class="btn" id="btnTileTest">위성지도 시험 (새 창)</button><button class="btn" id="btnWmsTest">지적도 시험 (새 창)</button></div>
       <p class="help" id="keyInfo"></p>
-      <p class="help">파일에 '원점' 열이 있으면 그 값을 먼저 씁니다. 좌표는 세계측지계(GRS80) 기준입니다. 브이월드 키가 없으면 일반 지도로 보입니다.</p>
+      <p class="help">파일에 '원점'·'좌표계' 열이 있으면 그 값을 먼저 씁니다. 세계측지계(GRS80)는 X 가산 600,000·Y 200,000, 지역측지계(Bessel)는 옛 지적 원점(경도 +10.405″)·X 가산 500,000·Y 200,000입니다.</p>
+      <p class="help">지역측지계는 세계측지계로 바꾸는 표준 변수로 계산해 수 m 오차가 남습니다. 지도 표시·길찾기에는 충분하지만 cm 검사는 세계측지계 성과로 하세요. 브이월드 키가 없으면 일반 지도로 보입니다.</p>
       <div class="row"><button class="btn" id="btnSaveSet">설정 저장</button></div>
     </div>
     <div class="card">
@@ -896,7 +905,7 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
       <p class="help">이 휴대폰에 저장된 모든 작업(점·조사기록·사진)을 지웁니다. 작업 하나만 지우려면 위 작업 목록의 '삭제'를 쓰세요.</p>
       <div class="row"><button class="btn" id="btnReset" style="color:var(--red)">전체 지우기</button></div>
     </div>
-    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.12 08:42</p>
+    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.12 10:36</p>
   </div>
 </div>
 
@@ -956,6 +965,15 @@ const stLabel = (k) => S.mode === "insp" && k === "미조사" ? "미측정" : k;
 const TM = (lon0) => `+proj=tmerc +lat_0=38 +lon_0=${lon0} +k=1 +x_0=200000 +y_0=600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs`;
 proj4.defs("EPSG:5185", TM(125)); proj4.defs("EPSG:5186", TM(127));
 proj4.defs("EPSG:5187", TM(129)); proj4.defs("EPSG:5188", TM(131));
+// 지역측지계(Bessel) : 옛 지적 원점(경도 +10.405″), X 가산 500,000. 세계측지계로 바꾸는 7변수(EPSG 표준)는 수 m 오차가 남으므로 지도·길찾기용
+const TMB = (lon0) => `+proj=tmerc +lat_0=38 +lon_0=${lon0 + 10.405 / 3600} +k=1 +x_0=200000 +y_0=500000 +ellps=bessel +towgs84=-115.80,474.99,674.11,1.16,-2.31,-1.63,6.43 +units=m +no_defs`;
+proj4.defs("EPSG:5173", TMB(125)); proj4.defs("EPSG:5174", TMB(127));
+proj4.defs("EPSG:5176", TMB(129)); proj4.defs("EPSG:5177", TMB(131));
+const BESSEL_OF = { "EPSG:5185": "EPSG:5173", "EPSG:5186": "EPSG:5174", "EPSG:5187": "EPSG:5176", "EPSG:5188": "EPSG:5177" };
+const crsCode = (code, datum) => datum === "Bessel" ? BESSEL_OF[code] || code : code;
+const DATUM_NAME = (d) => d === "Bessel" ? "지역측지계(Bessel)" : "세계측지계(GRS80)";
+// 파일의 '좌표계' 열 → "Bessel" / "" (세계) / null (알 수 없음)
+const datumOf = (v) => { const s = String(v ?? ""); return /지역|bessel|베셀|tokyo/i.test(s) ? "Bessel" : /세계|grs|wgs|itrf/i.test(s) ? "" : null; };
 function originCode(v, dflt) {
   const s = String(v ?? "").replace(/\s/g, "");
   if (/서부|125/.test(s)) return "EPSG:5185";
@@ -1189,7 +1207,7 @@ const fmtAcc = (a) => a < 1 ? `${(a * 100).toFixed(0)}cm` : `${a < 10 ? a.toFixe
 const fm = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(Math.abs(v) < 10 ? 3 : 2)}m`;
 // 위경도 → 그 점의 원점 기준 지적 좌표 (X=북, Y=동)
 const CODE_OF = { "서부원점": "EPSG:5185", "중부원점": "EPSG:5186", "동부원점": "EPSG:5187", "동해원점": "EPSG:5188" };
-function llToTM(lat, lon, originName) { const [Y, X] = proj4("EPSG:4326", CODE_OF[originName] || set.origin, [lon, lat]); return { X, Y }; }
+function llToTM(lat, lon, originName, datum) { const [Y, X] = proj4("EPSG:4326", crsCode(CODE_OF[originName] || set.origin, datum), [lon, lat]); return { X, Y }; }
 function startGPS() {
   if (!navigator.geolocation) { $("gps").textContent = "GPS 지원 안 됨"; return; }
   navigator.geolocation.watchPosition(pos => {
@@ -1205,9 +1223,12 @@ function onPos(p) {
       meCirc = L.circle(ll, { radius: me.acc, weight: 1, color: "#2F80ED", fillColor: "#2F80ED", fillOpacity: .12 }).addTo(map);
       meDot = L.circleMarker(ll, { radius: 7, weight: 3, color: "#fff", fillColor: "#2F80ED", fillOpacity: 1 }).addTo(map);
     } else { meDot.setLatLng(ll); meCirc.setLatLng(ll).setRadius(me.acc); }
-    $("gps").innerHTML = me.src === "gnss"
-      ? `<span style="color:${me.fix === 4 ? "#2E9E6B" : me.fix === 5 ? "#F28C28" : "#E5484D"}">●</span> GNSS ${FIXNAME[me.fix] || ""} · 위성 ${me.sats || "-"} · <b>±${fmtAcc(me.acc)}</b>`
-      : `${me.acc < 1 ? "RTK " : "GPS "}정확도 <b>±${fmtAcc(me.acc)}</b>`;
+    if (me.src === "gnss") {
+      const q = qc(me);
+      $("gps").innerHTML = `<span style="color:${me.fix === 4 ? "#2E9E6B" : me.fix === 5 ? "#F28C28" : "#E5484D"}">●</span> ${FIXNAME[me.fix] || ""} · 위성 <b>${q.sats}</b>${q.hiKnown ? "<small>(15°↑)</small>" : ""}`
+        + `${q.pdop != null ? ` · PDOP ${q.pdop.toFixed(1)}` : ""} · <b>±${fmtAcc(me.acc)}</b>`
+        + (set.fixOnly !== false && !q.ok ? `<br><span style="color:#E5484D">⚠ 규정 미달 : ${esc(q.bad.join(", "))}</span>` : "");
+    } else $("gps").innerHTML = `${me.acc < 1 ? "RTK " : "GPS "}정확도 <b>±${fmtAcc(me.acc)}</b>`;
     for (const f of measFns) f(me);
     if (follow) map.panTo(ll);
     if (cur) showDist();
@@ -1229,7 +1250,7 @@ function showDist() {
   // 30m 안으로 들어오면 성과 좌표 기준으로 어느 쪽으로 몇 cm 가야 하는지 (지적 좌표로 계산)
   const box = $("pStake");
   if (d <= 30 && isFinite(p.X)) {
-    const m = llToTM(me.lat, me.lon, p.originName), dN = p.X - m.X, dE = p.Y - m.Y;
+    const m = llToTM(me.lat, me.lon, p.originName, p.datum), dN = p.X - m.X, dE = p.Y - m.Y;
     box.style.display = "block";
     box.innerHTML = `점까지 <b>${dN >= 0 ? "북" : "남"} ${Math.abs(dN).toFixed(2)}m · ${dE >= 0 ? "동" : "서"} ${Math.abs(dE).toFixed(2)}m</b><br>
       <small>지금 위치 X ${m.X.toFixed(3)} · Y ${m.Y.toFixed(3)} · 정확도 ±${fmtAcc(me.acc)}${me.acc >= 1 ? " (휴대폰 GPS라 참고용)" : ""}</small>`;
@@ -1260,35 +1281,73 @@ const SND = {
   fixGot: () => { tone([880, 1175], 0.09); buzz(50); },                              // 고정해 들어옴
 };
 // 📐 실측 : 정한 관측 시간(10~60초) 동안 받은 위치를 평균 내서 성과와 비교 (RTK 장비면 cm 단위)
-const obsSec = () => Math.min(60, Math.max(10, parseInt(set.obs || "10", 10) || 10));
+// 규정 조건 모드(GNSS 연결 + "규정 조건을 지킬 때만 관측")에서는 최소 15초 (지적재조사측량규정 : 고정해 후 15초 이상)
+const ruleOn = () => GN.on && set.fixOnly !== false;
+const obsSec = () => { const v = Math.min(60, Math.max(10, parseInt(set.obs || "10", 10) || 10)); return ruleOn() ? Math.max(15, v) : v; };
 const measLabel = () => S.mode === "insp" ? `📐 검사 실측 (${obsSec()}초 평균 · 허용 ±${S.tol}m)` : `📐 실측 (${obsSec()}초 평균)`;
-let measuring = false;
+const avg = (a, d) => a.length ? +(a.reduce((s, v) => s + v, 0) / a.length).toFixed(d) : "";
+// 지오이드 : 지적 검사(연결교차)는 수평 X·Y만 비교하므로 결과에는 영향 없음. 수신기·컨트롤러에 맞춘 모델을 기록으로 남김
+const GEOID_NAME = { rcv: "수신기 설정 그대로", KNGeoid24: "KNGeoid24", KNGeoid18: "KNGeoid18", none: "적용 안 함(타원체고)" };
+const WAIT_MAX = 180;   // 조건이 3분 넘게 안 맞으면 멈춤 (규정 : 초기화 3분 초과가 반복되면 측량 방법을 바꿈)
+let measuring = false, measStop = false;
 $("pMeas").onclick = () => {
-  if (measuring) return;
+  if (measuring) { if (confirm("실측을 멈출까요? (지금까지 받은 값은 버립니다)")) measStop = true; return; }
   const id = cur, p = P(id); if (!p || !isFinite(p.X)) return;
   if (!me) { toast("아직 내 위치를 못 찾았습니다"); return; }
   // 점에서 너무 멀면 한 번 물어봄 (다른 점 앞에서 잘못 누르는 경우 방지)
   const far = haversine(me, p), lim = Math.max(10, me.acc * 3);
   if (far > lim && !confirm(`지금 위치가 ${p.name}에서 ${fmtDist(far)} 떨어져 있습니다. 그래도 실측할까요?`)) return;
+  // GNSS로 처음 실측할 때 지리원 아이디가 비어 있으면 한 번 물어봄 (관측기록에 남김)
+  if (GN.on && !set.ngii) {
+    const v = prompt("관측기록에 남길 국토지리정보원(VRS) 아이디를 넣어 주세요.\n비워 두고 확인을 누르면 아이디 없이 진행합니다.", "");
+    if (v === null) return;
+    if (v.trim()) { set.ngii = v.trim(); DB.set("set", set); if ($("setNgii")) $("setNgii").value = set.ngii; }
+  }
   audioOn(); SND.start();
-  measuring = true; const got = []; let left = obsSec();
-  const btn = $("pMeas"); btn.textContent = `📐 실측 중… ${left}초 (점 위에 그대로)`;
-  const fixOnly = () => GN.on && set.fixOnly !== false; let skipped = 0;
-  const take = () => { if (fixOnly() && me.fix !== 4) { skipped++; return; } got.push({ ...me }); };
-  const fn = () => {}; take();
+  measuring = true; measStop = false;
+  const got = [], qs = [], rule = ruleOn(), need = obsSec(), t0 = nowStr(), T0 = Date.now();
+  let left = need, waited = 0, wasBad = false, lastBad = [];
+  const btn = $("pMeas"); btn.textContent = `📐 실측 중… ${left}초 (점 위에 그대로 · 누르면 멈춤)`;
+  const take = () => {   // 1초마다 지금 위치를 한 번 받아 둠. 규정 조건 모드면 조건이 맞을 때만
+    if (rule) { const q = qc(me); if (!q || !q.ok) { lastBad = q ? q.bad : ["GNSS 위치 없음"]; return false; } qs.push(q); }
+    got.push({ ...me }); return true;
+  };
+  const end = () => { clearInterval(t); measuring = false; btn.textContent = measLabel(); };
   const t = setInterval(() => {
-    left--; btn.textContent = `📐 실측 중… ${left}초 (점 위에 그대로)`;
-    take();   // 1초마다 지금 위치를 한 번씩 받아 둠 (위치가 그대로여도). GNSS 직결이면 고정해만
+    if (measStop) { end(); toast("실측을 멈췄습니다"); return; }
+    if (take()) {
+      if (wasBad) { SND.fixGot(); wasBad = false; }
+      left--; btn.textContent = `📐 실측 중… ${left}초 (점 위에 그대로 · 누르면 멈춤)`;
+    } else {
+      waited++;
+      if (!wasBad) { SND.fixLost(); wasBad = true; }
+      btn.textContent = `⏸ 조건 미달로 대기 ${waited}초 · 남은 ${left}초 (${lastBad.join(", ")})`;
+      if (waited >= WAIT_MAX) { end(); SND.fail(); toast(`${WAIT_MAX / 60}분 동안 규정 조건이 맞지 않아 실측을 멈췄습니다 (${lastBad.join(", ")}). 자리를 옮기거나 측량 방법을 바꾸세요`, 8000); return; }
+    }
     if (left > 0) return;
-    clearInterval(t); measFns.delete(fn); measuring = false; btn.textContent = measLabel();
-    if (!got.length) { SND.fail(); toast("관측 시간 동안 RTK 고정해가 한 번도 없어 실측하지 못했습니다. 고정해가 된 뒤 다시 누르세요", 6000); return; }
-    if (skipped) toast(`고정해가 아닌 ${skipped}초는 빼고 ${got.length}초로 평균했습니다`, 4000);
+    end();
+    if (!got.length) { SND.fail(); toast("받은 위치가 없어 실측하지 못했습니다. 다시 누르세요", 6000); return; }
+    if (waited) toast(`조건이 안 맞은 ${waited}초는 빼고 ${got.length}초로 평균했습니다`, 4000);
     const lat = got.reduce((a, g) => a + g.lat, 0) / got.length, lon = got.reduce((a, g) => a + g.lon, 0) / got.length;
-    const acc = got.reduce((a, g) => a + g.acc, 0) / got.length, m = llToTM(lat, lon, p.originName);
+    const acc = got.reduce((a, g) => a + g.acc, 0) / got.length, m = llToTM(lat, lon, p.originName, p.datum);
     const fixes = new Set(got.map(g => g.t)).size;
-    const dX = m.X - p.X, dY = m.Y - p.Y;
+    const dX = m.X - p.X, dY = m.Y - p.Y, gn = got[0].src === "gnss";
+    // 관측 조건 기록 (지적위성측량관측부에 들어갈 값). 수신기가 안 보낸 값은 빈칸
+    const nums = (k) => (gn ? got.map(g => g[k]) : []).filter(v => v != null && isFinite(v));
+    const qn = (k) => qs.map(q => q[k]).filter(v => v != null && isFinite(v));
+    const satsArr = rule ? qn("sats") : nums("sats"), pdArr = rule ? qn("pdop") : (dopNow() ? [dopNow().p] : []);
+    const obs = gn ? {
+      t0, t1: nowStr(), dur: Math.round((Date.now() - T0) / 1000), wait: waited, rule: rule ? "적용" : "미적용",
+      satsMin: satsArr.length ? Math.min(...satsArr) : "", satsAvg: satsArr.length ? +(satsArr.reduce((a, b) => a + b, 0) / satsArr.length).toFixed(1) : "",
+      satsHi: rule ? (qs.some(q => q.hiKnown) ? "15°↑" : "사용위성") : "",
+      pdopMax: pdArr.length ? +Math.max(...pdArr).toFixed(1) : "", ageMax: nums("age").length ? +Math.max(...nums("age")).toFixed(1) : "",
+      hMax: nums("hacc").length ? +Math.max(...nums("hacc")).toFixed(3) : "", vMax: nums("vacc").length ? +Math.max(...nums("vacc")).toFixed(3) : "",
+      rcv: GN.how || "", ngii: set.ngii || "", geoid: GEOID_NAME[set.geoid || "rcv"],
+      alt: avg(nums("alt"), 3), sep: avg(nums("sep"), 3), hEll: nums("alt").length && nums("sep").length ? +(avg(nums("alt"), 4) + avg(nums("sep"), 4)).toFixed(3) : "" }
+      : { t0, t1: nowStr(), dur: Math.round((Date.now() - T0) / 1000) };
+    obs.datum = DATUM_NAME(p.datum); obs.origin = p.originName;
     const nm = { X: +m.X.toFixed(4), Y: +m.Y.toFixed(4), dX: +dX.toFixed(4), dY: +dY.toFixed(4), d: +Math.hypot(dX, dY).toFixed(4), acc, n: got.length, fixes, time: nowStr(),
-      src: got[0].src === "gnss" ? "GNSS" : "휴대폰", fix: got[0].src === "gnss" ? FIXNAME[got[got.length - 1].fix] : "", sats: got[got.length - 1].sats || "" };
+      src: gn ? "GNSS" : "휴대폰", fix: gn ? FIXNAME[got[got.length - 1].fix] : "", sats: gn ? (obs.satsMin !== "" ? obs.satsMin : got[got.length - 1].sats || "") : "", obs };
     // 다시 찍으면 지난 실측은 이력으로 남기고, 가장 최근 것을 채택 (카드에서 다른 회차로 바꿀 수 있음)
     const rr = rec(id); rr.measAll = rr.measAll || (rr.meas ? [rr.meas] : []); rr.measAll.push(nm); rr.meas = nm;
     if (S.mode === "insp") rr.status = judgeOf(nm) ? "적합" : "초과";
@@ -1305,6 +1364,10 @@ function showMeas() {
   el.innerHTML = ins ? `검사 ${esc(m.time)} : △X ${fm(-m.dX)} · △Y ${fm(-m.dY)} <small>(성과−검사)</small> · 연결교차 <b>${m.d.toFixed(4)}m</b>${judge}<br>`
     : `실측 ${esc(m.time)} : ΔX ${fm(m.dX)} · ΔY ${fm(m.dY)} · 편차 <b>${m.d.toFixed(3)}m</b>${judge}<br>`;
   el.innerHTML += `실측 X ${m.X.toFixed(3)} · Y ${m.Y.toFixed(3)} · 정확도 ±${fmtAcc(m.acc)} · ${m.n}회 평균${m.fixes && m.fixes < 3 ? " (위치 갱신이 적음)" : ""}${m.acc >= 1 ? " · 휴대폰 GPS라 참고용" : ""}`;
+  if (P(cur) && P(cur).datum === "Bessel") el.innerHTML += `<br><span style="color:#F28C28">⚠ 지역측지계 점 : 세계측지계로 바꿀 때 수 m 오차가 있어 편차·판정은 참고용</span>`;
+  const o = m.obs;
+  if (o && m.src === "GNSS") el.innerHTML += `<br>관측 : 위성 최소 <b>${o.satsMin === "" ? "-" : o.satsMin}</b>${o.satsHi === "15°↑" ? "(15°↑)" : ""} · PDOP 최대 ${o.pdopMax === "" ? "-" : o.pdopMax}`
+    + ` · 지연 최대 ${o.ageMax === "" ? "-" : o.ageMax + "초"} · ${o.dur}초 관측${o.wait ? ` (대기 ${o.wait}초)` : ""} · 규정 조건 ${o.rule}`;
   const all = r.measAll || [];
   if (all.length > 1) {
     el.innerHTML += `<div class="hist"><b>실측 ${all.length}회</b> <small>(누르면 그 회차를 결과로 채택)</small>` + all.map((x, i) => {
@@ -1329,7 +1392,7 @@ function openPoint(id, fly) {
   $("pNoMap").style.display = p.noMap ? "" : "none";
   $("pNoMap").textContent = p.noMap ? `지도에 표시할 수 없는 점입니다 (${p.reason}). 목록에서 정보만 확인할 수 있고, 조사 결과는 원래 값 그대로 내보냅니다.` : "";
   $("pName").textContent = p.name; $("pType").textContent = p.type || "기준점"; $("pType").style.display = p.type ? "" : "none";
-  const fd = { maximumFractionDigits: S.mode === "insp" ? 4 : 2 }, xy = !p.noMap && isFinite(p.X) ? `${S.mode === "insp" ? "성과 " : ""}X ${p.X.toLocaleString("ko-KR", fd)} · Y ${p.Y.toLocaleString("ko-KR", fd)} (${p.originName})${S.mode === "insp" ? ` · 허용 ±${S.tol}m` : ""}` : "";
+  const fd = { maximumFractionDigits: S.mode === "insp" ? 4 : 2 }, xy = !p.noMap && isFinite(p.X) ? `${S.mode === "insp" ? "성과 " : ""}X ${p.X.toLocaleString("ko-KR", fd)} · Y ${p.Y.toLocaleString("ko-KR", fd)} (${p.datum === "Bessel" ? "지역측지계 · " : ""}${p.originName})${S.mode === "insp" ? ` · 허용 ±${S.tol}m` : ""}` : "";
   $("pMeta").innerHTML = [p.addr && esc(p.addr), xy, p.no && `기준점번호 ${esc(p.no)}`, S.mode === "insp" && p.formNo && p.formNo !== p.name && `검사 양식 번호 ${esc(p.formNo)}`,
     p.prevStat && `지난 조사 : <b>${esc(p.prevStat)}</b>${p.prevDate ? ` (${esc(ymdDot(p.prevDate))})` : ""}`].filter(Boolean).join("<br>");
   showDist();
@@ -1541,6 +1604,7 @@ $("fileIn").onchange = async e => {
     $("colMap").innerHTML = FIELDS.map(([k, lab]) =>
       `<span>${lab}</span><select data-k="${k}"><option value="">(없음)</option>${t.cols.map(c => `<option ${g[k] === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>`).join("")
       + `<span>원점<br><small style="color:var(--mut)">(원점 열이 없을 때)</small></span><select id="impOrigin">${Object.entries(ORIGIN_NAME).map(([c, n]) => `<option value="${c}" ${set.origin === c ? "selected" : ""}>${n}</option>`).join("")}</select>`
+      + `<span>측지계<br><small style="color:var(--mut)">(좌표계 열이 없을 때)</small></span>${datumSelect()}`
       + `<span>작업 종류</span><select id="impMode"><option value="survey">기준점 조사 (완전·망실)</option><option value="insp">검사 (연결교차 판정)</option></select>`
       + `<span>허용 범위(m)<br><small style="color:var(--mut)">(검사일 때)</small></span><input type="text" id="impTol2" inputmode="decimal" value="${set.tol || "0.03"}">`;
     $("colHint").textContent = `${f.name} · ${t.rows.length}줄. 기준점명과 X·Y(또는 위도·경도)는 꼭 있어야 합니다. 폐기된 점과 좌표가 없는 점은 지도에서 뺍니다.`;
@@ -1548,6 +1612,7 @@ $("fileIn").onchange = async e => {
     $("mapCard").scrollIntoView({ behavior: "smooth" });
   } catch (err) { toast("파일을 읽지 못했습니다 : " + err.message, 4000); }
 };
+const datumSelect = () => `<select id="impDatum"><option value="" ${set.datum !== "Bessel" ? "selected" : ""}>세계측지계 (GRS80)</option><option value="Bessel" ${set.datum === "Bessel" ? "selected" : ""}>지역측지계 (Bessel · 참고용)</option></select>`;
 const num = (v) => { const n = parseFloat(String(v).replace(/,/g, "").trim()); return isFinite(n) ? n : NaN; };
 const ymd = (s) => String(s || "").replace(/\D/g, "").slice(0, 8);
 const ymdDot = (s) => { const d = ymd(s); return d.length === 8 ? `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6)}` : String(s || ""); };
@@ -1559,7 +1624,8 @@ $("btnApply").onclick = async () => {
   const m = {}; $("colMap").querySelectorAll("select[data-k]").forEach(s => { if (s.value) m[s.dataset.k] = s.value; });
   if (!m.name || !((m.X && m.Y) || (m.lat && m.lon))) { toast("기준점명과 X·Y(또는 위도·경도) 열을 골라 주세요", 3500); return; }
   set.origin = $("impOrigin").value; $("setOrigin").value = set.origin;
-  const pts = [], bad = [], skip = {}; let swapped = 0;
+  const dDef = $("impDatum").value; set.datum = dDef; $("setDatum").value = dDef;
+  const pts = [], bad = [], skip = {}; let swapped = 0, nBes = 0;
   const names = {};
   pending.rows.forEach((r, i) => {
     const v = (k) => m[k] ? String(r[m[k]] ?? "").trim() : "";
@@ -1569,18 +1635,20 @@ $("btnApply").onclick = async () => {
     const base = { id: "p" + i, row: i, name, no: v("no"), type, addr: v("addr"), prevStat: v("prevStat"), prevDate: v("prevDate") };
     const noMap = (reason) => { skip[reason] = (skip[reason] || 0) + 1; pts.push(Object.assign(base, { noMap: true, reason, X: num(r[m.X]), Y: num(r[m.Y]), originName: "", lat: null, lon: null })); };
     if (/폐기/.test(v("install"))) return noMap("폐기");
-    if (/지역/.test(v("csys"))) return noMap("지역측지계");   // 지역측지계 좌표는 바꿀 수 없음
+    // 좌표계 열이 있으면 그 값(세계/지역), 없으면 고른 측지계. 지역측지계는 표준 7변수로 바꿔 지도에 올림(수 m 오차 · 참고용)
+    const dc = datumOf(v("csys")), datum = dc === null ? dDef : dc;
     const code = originCode(v("origin"), set.origin);
     let ll = null, X = NaN, Y = NaN;
     if (m.X && m.Y) {
       X = num(r[m.X]); Y = num(r[m.Y]);
       if (!(X > 0 && Y > 0)) X = Y = NaN;
-      else ll = tmToLL(X, Y, code);
+      else ll = tmToLL(X, Y, crsCode(code, datum));
     }
     if (!ll && m.lat && m.lon) { const la = num(r[m.lat]), lo = num(r[m.lon]); if (inKorea(la, lo)) ll = { lat: la, lon: lo }; }
     if (!ll) { if (isFinite(X)) bad.push(name); return noMap(isFinite(X) ? "좌표 오류" : "좌표없음"); }
     if (ll.swapped) { swapped++; [X, Y] = [Y, X]; }
-    pts.push(Object.assign(base, { X, Y, originName: ORIGIN_NAME[code], lat: ll.lat, lon: ll.lon }));
+    if (datum === "Bessel" && isFinite(X)) nBes++;
+    pts.push(Object.assign(base, { X, Y, originName: ORIGIN_NAME[code], datum: isFinite(X) ? datum : "", lat: ll.lat, lon: ll.lon }));
   });
   if (!pts.some(onMap)) { toast("지도에 올릴 점이 없습니다. 원점·X·Y 열을 확인해 주세요", 4000); return; }
   // 기존 작업은 그대로 두고 새 작업으로 만듦 (같은 이름이 있으면 뒤에 날짜를 붙임)
@@ -1596,7 +1664,8 @@ $("btnApply").onclick = async () => {
   closeAll(() => { drawPoints(); fitAll(); }); drawPoints(); fitAll();
   const sk = Object.entries(skip).map(([k, n]) => `${k} ${n}`).join(", ");
   toast(`${pts.length}개 점 중 ${pts.filter(onMap).length}개를 지도에 올렸습니다` + (sk ? ` · 목록에만 : ${sk}` : "") + (bad.length ? ` (${bad.slice(0, 3).join(", ")})` : "")
-    + (swapped ? ` · ${swapped}개는 X·Y가 바뀌어 있어 고쳐 읽음` : ""), 5000);
+    + (swapped ? ` · ${swapped}개는 X·Y가 바뀌어 있어 고쳐 읽음` : "")
+    + (nBes ? ` · 지역측지계 ${nBes}점은 바꿀 때 수 m 오차가 있어 위치·실측은 참고용` : ""), nBes ? 8000 : 5000);
 };
 
 // ───────── 측량성과 검사 (측량성과비교표 양식) ─────────
@@ -1634,7 +1703,8 @@ function showInspCard(info, fileName) {
   $("colMap").innerHTML = `<span>양식</span><b>측량성과비교표 (검사)</b>
     <span>점 수</span><b>${info.rows.length}점 (${esc(info.rows[0].name)} ~ ${esc(info.rows[info.rows.length - 1].name)})</b>
     <span>허용 범위</span><input type="text" id="impTol" inputmode="decimal" value="${info.tol}">
-    <span>원점</span><select id="impOrigin">${Object.entries(ORIGIN_NAME).map(([c, n]) => `<option value="${c}" ${set.origin === c ? "selected" : ""}>${n}</option>`).join("")}</select>`;
+    <span>원점</span><select id="impOrigin">${Object.entries(ORIGIN_NAME).map(([c, n]) => `<option value="${c}" ${set.origin === c ? "selected" : ""}>${n}</option>`).join("")}</select>
+    <span>측지계</span>${datumSelect()}`;
   $("colHint").textContent = `${fileName} · 점마다 실측하면 연결교차를 바로 계산하고, 끝나면 이 양식의 검사측량성과 칸을 채워 돌려줍니다.`;
   $("mapCard").style.display = "block"; $("mapCard").scrollIntoView({ behavior: "smooth" });
 }
@@ -1651,6 +1721,7 @@ async function refPoints() {
 async function applyInsp() {
   const info = pending.insp;
   set.origin = $("impOrigin").value; $("setOrigin").value = set.origin;
+  const datum = $("impDatum").value; set.datum = datum; $("setDatum").value = datum;
   const tol = parseFloat($("impTol").value) || info.tol;
   const pts = [], ref = await refPoints(); let hit = 0;
   info.rows.forEach((r, i) => {
@@ -1658,9 +1729,9 @@ async function applyInsp() {
     const f = r.X > 0 ? ref.find(q => Math.abs(q.X - r.X) < 0.5 && Math.abs(q.Y - r.Y) < 0.5) : null; if (f) hit++;
     const base = { id: "p" + i, row: r.excelRow, formNo: r.name, name: f ? f.name : r.name, no: f ? f.no : "", type: f ? f.type || "기준점" : "검사점",
       addr: f ? f.addr : "", prevStat: f ? f.prevStat : "", prevDate: f ? f.prevDate : "" };
-    const ll = r.X > 0 && r.Y > 0 ? tmToLL(r.X, r.Y, set.origin) : null;
+    const ll = r.X > 0 && r.Y > 0 ? tmToLL(r.X, r.Y, crsCode(set.origin, datum)) : null;
     if (!ll) pts.push(Object.assign(base, { noMap: true, reason: "좌표없음", X: r.X, Y: r.Y, originName: "", lat: null, lon: null }));
-    else pts.push(Object.assign(base, { X: ll.swapped ? r.Y : r.X, Y: ll.swapped ? r.X : r.Y, originName: ORIGIN_NAME[set.origin], lat: ll.lat, lon: ll.lon }));
+    else pts.push(Object.assign(base, { X: ll.swapped ? r.Y : r.X, Y: ll.swapped ? r.X : r.Y, originName: ORIGIN_NAME[set.origin], datum, lat: ll.lat, lon: ll.lon }));
   });
   if (!pts.some(onMap)) { toast("지도에 올릴 점이 없습니다. 원점을 확인해 주세요", 4000); return; }
   await saveNow();
@@ -1671,7 +1742,8 @@ async function applyInsp() {
   await DB.set("set", set); setFilter("전체"); renderProjects();
   $("mapCard").style.display = "none"; $("fileIn").value = "";
   closeAll(() => { drawPoints(); fitAll(); }); drawPoints(); fitAll();
-  toast(`검사 ${pts.length}점을 올렸습니다 · 허용 ±${tol}m` + (hit ? ` · ${hit}점은 기준점 자료에서 기준점명·소재지를 가져옴` : ""), 5000);
+  toast(`검사 ${pts.length}점을 올렸습니다 · 허용 ±${tol}m` + (hit ? ` · ${hit}점은 기준점 자료에서 기준점명·소재지를 가져옴` : "")
+    + (datum === "Bessel" ? " · 지역측지계라 바꿀 때 수 m 오차가 있어 판정은 참고용" : ""), datum === "Bessel" ? 8000 : 5000);
 }
 const modOf = (v, m) => m > 0 ? ((v % m) + m) % m : v;
 // 원래 엑셀 파일을 열어 해당 칸만 바꿔 넣음 (서식·테두리·수식 그대로)
@@ -1761,6 +1833,7 @@ async function buildInspZip() {
     { "구분": "표지 미기록", "점수": rows.filter(r => !r["표지상태"]).length }];
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "검사상세"); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sum), "집계");
   if (hist.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hist), "실측이력");
+  addObsSheet(wb);
   zip.file(`${base}_검사상세_${stamp}.xlsx`, writeNice(wb));
   const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
   const hm = `${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}`;
@@ -1771,7 +1844,42 @@ async function buildInspZip() {
 // 수신기가 내보내는 NMEA(GGA·GST·RMC)를 직접 읽음. 연결 중에는 휴대폰 위치 대신 수신기 위치를 씀.
 //  · BLE : 흔한 무선 시리얼 서비스 3종(Nordic UART, Microchip, HM-10)을 차례로 찾아 붙음
 //  · 시리얼 : 크롬 Web Serial (클래식 블루투스 SPP·USB). 지원 안 되는 크롬이면 APK가 필요
-const GN = { on: false, how: "", dev: null, port: null, reader: null, buf: "", log: [], gst: null, last: 0, n: 0 };
+const GN = { on: false, how: "", dev: null, port: null, reader: null, buf: "", log: [], gst: null, last: 0, n: 0, sv: {}, used: {}, dop: null };
+// 위성 체계 : 문장 앞 두 글자(GP·GL·GA·GB·GQ) 또는 위성번호 범위로 구분
+const SYS_TK = { GP: "GPS", GL: "GLONASS", GA: "Galileo", GB: "BeiDou", BD: "BeiDou", GQ: "QZSS", QZ: "QZSS", GI: "NavIC" };
+const SYS_ID = { 1: "GPS", 2: "GLONASS", 3: "Galileo", 4: "BeiDou", 5: "QZSS", 6: "NavIC" };   // NMEA 4.11 GSA 끝자리
+const SYS_COLOR = { GPS: "#2F80ED", GLONASS: "#E5484D", Galileo: "#2E9E6B", BeiDou: "#F28C28", QZSS: "#8E5CD9", NavIC: "#6B7280", SBAS: "#9CA3AF", 기타: "#9CA3AF" };
+function sysOf(tk, prn) {
+  if (tk === "GP" && prn >= 33 && prn <= 64) return "SBAS";
+  if (SYS_TK[tk]) return SYS_TK[tk];
+  if (prn <= 32) return "GPS"; if (prn <= 64) return "SBAS"; if (prn <= 96) return "GLONASS";
+  if (prn >= 193 && prn <= 200) return "QZSS"; if (prn >= 201 && prn <= 264) return "BeiDou"; if (prn >= 301 && prn <= 336) return "Galileo";
+  return "기타";
+}
+// 지금 보이는 위성 : 5초 안에 GSV로 들어온 것만. "15°↑"는 고도각 15° 이상이면서 신호가 잡힌 위성 (SBAS 제외)
+function satStat() {
+  const now = Date.now(), list = Object.values(GN.sv).filter(o => now - o.t < 5000 && o.sys !== "SBAS");
+  const trk = list.filter(o => o.snr > 0), hi = trk.filter(o => o.el >= 15);
+  const used = Object.values(GN.used).filter(u => now - u.t < 5000).reduce((a, u) => a + u.n, 0);
+  const by = {}; for (const o of trk) { const b = by[o.sys] || (by[o.sys] = { all: 0, hi: 0 }); b.all++; if (o.el >= 15) b.hi++; }
+  return { has: list.length > 0, view: list.length, trk: trk.length, hi: hi.length, used, by, list };
+}
+const dopNow = () => GN.dop && Date.now() - GN.dop.t < 5000 ? GN.dop : null;
+// 📏 규정 조건 (GNSS에 의한 지적측량규정·지적재조사측량규정의 이동측량 기준)
+//  고정해 · 고도각 15° 이상 위성 5개 이상 · PDOP 3 미만 · 보정정보 지연 5초 미만 · 정밀도 수평 ±3cm·수직 ±5cm 이내
+//  수신기가 내보내지 않는 값(PDOP·지연·정밀도)은 판정에서 빼고 "정보 없음"으로 기록
+function qc(p) {
+  if (!p || p.src !== "gnss") return null;
+  const s = satStat(), d = dopNow(), bad = [];
+  const sats = s.has ? s.hi : Math.max(s.used, p.sats || 0);
+  if (p.fix !== 4) bad.push(FIXNAME[p.fix] || "고정해 아님");
+  if (sats < 5) bad.push(`위성 ${sats}개`);
+  if (d && d.p >= 3) bad.push(`PDOP ${d.p.toFixed(1)}`);
+  if (p.age != null && p.age >= 5) bad.push(`지연 ${p.age.toFixed(0)}초`);
+  if (p.hacc != null && p.hacc > 0.03) bad.push(`수평 ±${fmtAcc(p.hacc)}`);
+  if (p.vacc != null && p.vacc > 0.05) bad.push(`수직 ±${fmtAcc(p.vacc)}`);
+  return { ok: !bad.length, bad, sats, hiKnown: s.has, used: Math.max(s.used, p.sats || 0), pdop: d ? d.p : null, age: p.age, h: p.hacc, v: p.vacc };
+}
 const FIXNAME = { 0: "측위 없음", 1: "단독측위", 2: "DGPS", 4: "RTK 고정해", 5: "RTK 플로트", 6: "추정" };
 const BLE_UART = [
   { svc: "6e400001-b5a3-f393-e0a9-e50e24dcca9e", rx: "6e400003-b5a3-f393-e0a9-e50e24dcca9e" },   // Nordic UART
@@ -1789,17 +1897,44 @@ function onNmea(line) {
   GN.log.push(line); if (GN.log.length > 8) GN.log.shift(); GN.n++;
   if (!nmeaOk(line)) return;
   const f = line.split("*")[0].split(","), ty = f[0].slice(-3);
-  if (ty === "GST") { const a = parseFloat(f[6]), b = parseFloat(f[7]); if (isFinite(a) && isFinite(b)) GN.gst = { acc: Math.hypot(a, b), t: Date.now() }; return; }
+  if (ty === "GST") {
+    const a = parseFloat(f[6]), b = parseFloat(f[7]), v = parseFloat(f[8]);
+    if (isFinite(a) && isFinite(b)) GN.gst = { acc: Math.hypot(a, b), v: isFinite(v) ? v : null, t: Date.now() };
+    return;
+  }
+  if (ty === "GSA") {   // 위치 계산에 쓴 위성 번호(최대 12개)와 PDOP·HDOP·VDOP. 위성 체계마다 한 줄씩 올 수 있음
+    const prns = f.slice(3, 15).filter(Boolean), id = parseInt(f[18], 10);
+    const key = SYS_ID[id] || (f[0].slice(1, 3) !== "GN" ? f[0].slice(1, 3) : sysOf("GN", parseInt(prns[0] || "0", 10)));
+    GN.used[key] = { n: prns.length, t: Date.now() };
+    const pd = parseFloat(f[15]), hd = parseFloat(f[16]), vd = parseFloat(f[17]);
+    if (isFinite(pd) && pd > 0) GN.dop = { p: pd, h: hd, v: vd, t: Date.now() };
+    return;
+  }
+  if (ty === "GSV") {   // 보이는 위성마다 번호·고도각·방위각·신호세기. 4개씩 여러 줄
+    const tk = f[0].slice(1, 3), now = Date.now();
+    for (let i = 4; i + 3 < f.length; i += 4) {
+      const prn = parseInt(f[i], 10); if (!prn) continue;
+      const k = tk + prn, o = GN.sv[k] || (GN.sv[k] = { sys: sysOf(tk, prn), prn });
+      const el = parseFloat(f[i + 1]), az = parseFloat(f[i + 2]), s = f[i + 3] === "" ? 0 : parseFloat(f[i + 3]) || 0;
+      if (isFinite(el)) o.el = el; if (isFinite(az)) o.az = az;
+      o.snr = o.snrT && now - o.snrT < 1500 ? Math.max(o.snr, s) : s;   // 같은 위성의 L1·L2 등 여러 신호는 센 쪽
+      o.snrT = now; o.t = now;
+    }
+    return;
+  }
   if (ty === "GGA") {
     const q = parseInt(f[6] || "0", 10), lat = dm(f[2], f[3]), lon = dm(f[4], f[5]);
     if (!q || !isFinite(lat) || !isFinite(lon)) { gnUI({ fix: q || 0 }); return; }
     const hdop = parseFloat(f[8]) || 0, sats = parseInt(f[7] || "0", 10), age = parseFloat(f[13]);
     const est = q === 4 ? 0.02 : q === 5 ? 0.3 : q === 2 ? 1 : Math.max(2, hdop * 4);
-    const acc = GN.gst && Date.now() - GN.gst.t < 3000 ? GN.gst.acc : est;
+    const g = GN.gst && Date.now() - GN.gst.t < 3000 ? GN.gst : null;
+    const acc = g ? g.acc : est;
     if (GN.fix === 4 && q !== 4) { SND.fixLost(); toast("RTK 고정해가 풀렸습니다", 2500); }
     else if (GN.fix != null && GN.fix !== 4 && q === 4) SND.fixGot();
     GN.fix = q;
-    onPos({ lat, lon, acc, t: Date.now(), fix: q, sats, hdop, age: isFinite(age) ? age : null, src: "gnss" });
+    const alt = parseFloat(f[9]), sep = parseFloat(f[11]);   // 표고(수신기 지오이드 기준) · 지오이드고 → 타원체고 = 표고 + 지오이드고
+    onPos({ lat, lon, acc, t: Date.now(), fix: q, sats, hdop, age: isFinite(age) ? age : null, hacc: g ? g.acc : null, vacc: g ? g.v : null,
+      alt: isFinite(alt) ? alt : null, sep: isFinite(sep) ? sep : null, src: "gnss" });
     return;
   }
   if (ty === "RMC" && Date.now() - GN.last > 3000) {   // GGA가 없는 기기만
@@ -1815,9 +1950,35 @@ function feedText(txt) {
 window.__feedNMEA = feedText;   // 시험용
 function gnUI(x) {
   const el = $("gnStat"); if (!el) return;
-  if (!GN.on) { el.innerHTML = "연결 안 됨"; return; }
-  const f = x && x.fix != null ? x.fix : (me && me.fix) || 0;
-  el.innerHTML = `<b>${esc(GN.how)}</b> 연결됨 · ${FIXNAME[f] || "측위 " + f}${me && me.sats ? ` · 위성 ${me.sats}` : ""}${me && me.src === "gnss" ? ` · ±${fmtAcc(me.acc)}` : ""} · 받은 문장 ${GN.n}`;
+  if (cur && !measuring) $("pMeas").textContent = measLabel();   // 연결하면 관측 시간(최소 15초)이 바뀔 수 있음
+  if (!GN.on) { el.innerHTML = "연결 안 됨"; skyPlot({ has: false }); return; }
+  const f = x && x.fix != null ? x.fix : (me && me.fix) || 0, q = qc(me), s = satStat(), d = dopNow();
+  el.innerHTML = `<b>${esc(GN.how)}</b> 연결됨 · ${FIXNAME[f] || "측위 " + f} · 받은 문장 ${GN.n}<br>`
+    + `위성 : 사용 ${q ? q.used : "-"} · 보임 ${s.has ? s.trk : "정보 없음(GSV)"}${s.has ? ` · <b>15° 이상 ${s.hi}</b>` : ""}<br>`
+    + `PDOP ${d ? d.p.toFixed(1) : "정보 없음(GSA)"} · 보정 지연 ${me && me.age != null ? me.age.toFixed(1) + "초" : "정보 없음"} · 정밀도 ${me && me.hacc != null ? `수평 ±${fmtAcc(me.hacc)}${me.vacc != null ? ` · 수직 ±${fmtAcc(me.vacc)}` : ""}` : "정보 없음(GST)"}`
+    + (q ? `<br>규정 조건 : ${q.ok ? '<b style="color:#2E9E6B">충족</b>' : `<b style="color:#E5484D">미달</b> (${esc(q.bad.join(", "))})`}` : "");
+  skyPlot(s);
+}
+// 위성 배치도 : 가운데가 머리 위(90°), 바깥 원이 지평선(0°). 점선 원이 15°. 15° 아래·신호 없는 위성은 흐리게
+function skyPlot(s) {
+  const box = $("gnSky"); if (!box) return;
+  if (!GN.on || !s.has) { box.style.display = "none"; return; }
+  const R = 70, C = 80, r = (el) => R * (90 - Math.max(0, el)) / 90;
+  let svg = `<svg width="160" height="160" viewBox="0 0 160 160" style="flex:none">`
+    + `<circle cx="${C}" cy="${C}" r="${R}" fill="#F4F6FA" stroke="#C8CDD8"/><circle cx="${C}" cy="${C}" r="${r(45)}" fill="none" stroke="#DDE1E8"/>`
+    + `<circle cx="${C}" cy="${C}" r="${r(15)}" fill="none" stroke="#E5484D" stroke-dasharray="3 3"/>`
+    + `<line x1="${C}" y1="${C - R}" x2="${C}" y2="${C + R}" stroke="#DDE1E8"/><line x1="${C - R}" y1="${C}" x2="${C + R}" y2="${C}" stroke="#DDE1E8"/>`
+    + `<text x="${C}" y="9" font-size="9" text-anchor="middle" fill="#6B7280">북</text>`;
+  for (const o of s.list) {
+    if (!isFinite(o.el) || !isFinite(o.az)) continue;
+    const a = o.az * Math.PI / 180, x = C + r(o.el) * Math.sin(a), y = C - r(o.el) * Math.cos(a), dim = !(o.snr > 0) || o.el < 15;
+    svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" fill="${SYS_COLOR[o.sys] || "#9CA3AF"}" opacity="${dim ? 0.25 : 0.95}"><title>${o.sys} ${o.prn} · 고도 ${o.el}° · 신호 ${o.snr}</title></circle>`;
+  }
+  svg += `</svg>`;
+  const rows = Object.entries(s.by).sort((a, b) => b[1].hi - a[1].hi)
+    .map(([k, v]) => `<div><span style="color:${SYS_COLOR[k] || "#9CA3AF"}">●</span> ${k} <b>${v.hi}</b> <small>/ ${v.all}</small></div>`).join("");
+  box.innerHTML = svg + `<div style="font-size:12px;line-height:1.7"><div style="color:var(--mut)">체계 · 15°↑ / 보임</div>${rows}<div style="margin-top:4px"><b>합계 ${s.hi}</b> / ${s.trk}</div></div>`;
+  box.style.display = "flex";
 }
 function gnLog() { const el = $("gnLog"); if (el && $("pnMenu").classList.contains("on")) el.textContent = GN.log.join("\n") || "(아직 받은 데이터 없음)"; }
 async function gnBle() {
@@ -1860,12 +2021,15 @@ async function gnOff(msg) {
   try { if (GN.reader) await GN.reader.cancel(); } catch (e) {}
   try { if (GN.port) await GN.port.close(); } catch (e) {}
   try { if (GN.dev && GN.dev.gatt.connected) GN.dev.gatt.disconnect(); } catch (e) {}
-  Object.assign(GN, { dev: null, port: null, reader: null, how: "" }); gnUI();
+  Object.assign(GN, { dev: null, port: null, reader: null, how: "", sv: {}, used: {}, dop: null, gst: null, fix: null }); gnUI();
   if (was) { SND.gnOff(); toast(msg || "GNSS 연결을 끊었습니다. 휴대폰 위치로 돌아갑니다", 4000); }
 }
 
 $("gnBleBtn").onclick = gnBle; $("gnSerBtn").onclick = gnSerial; $("gnOffBtn").onclick = () => gnOff();
-$("gnFixOnly").onchange = async () => { set.fixOnly = $("gnFixOnly").checked; await DB.set("set", set); };
+$("gnFixOnly").onchange = async () => { set.fixOnly = $("gnFixOnly").checked; await DB.set("set", set); if (cur && !measuring) $("pMeas").textContent = measLabel(); };
+$("setGeoid").onchange = async () => { set.geoid = $("setGeoid").value; await DB.set("set", set); toast(`지오이드 : ${GEOID_NAME[set.geoid]} (관측기록에 남습니다)`); };
+$("setDatum").onchange = async () => { set.datum = $("setDatum").value; await DB.set("set", set); toast(`기본 측지계 : ${DATUM_NAME(set.datum)} (새로 불러오는 파일부터)`); };
+$("setNgii").onchange = async () => { set.ngii = $("setNgii").value.trim(); await DB.set("set", set); toast(set.ngii ? `지리원 아이디 ${set.ngii} 저장 (관측기록에 남습니다)` : "지리원 아이디를 비웠습니다"); };
 $("gnSupport").textContent = `이 크롬 : BLE ${navigator.bluetooth ? "지원" : "미지원"} · 시리얼 ${navigator.serial ? "지원" : "미지원"}` + (!navigator.serial ? " (클래식 블루투스 장비는 크롬 업데이트 또는 APK 필요)" : "");
 // ───────── 엑셀 꾸미기 : 머리글 색·테두리·정렬·숫자 자릿수·열 너비 (모든 내보내기·백업 공통) ─────────
 function writeNice(wb) {
@@ -1878,8 +2042,10 @@ function writeNice(wb) {
     for (let c = rg.s.c; c <= rg.e.c; c++) {
       const h = ws[XLSX.utils.encode_cell({ r: rg.s.r, c })]; heads[c] = h ? String(h.v) : ""; wch[c] = width(heads[c]) + 2;
     }
+    const noteRow = ws["!noteRow"];   // 표 아래 안내문 줄 : 테두리·열 너비 계산에서 뺌
     for (let r = rg.s.r; r <= rg.e.r; r++) for (let c = rg.s.c; c <= rg.e.c; c++) {
       const ref = XLSX.utils.encode_cell({ r, c }); let cell = ws[ref];
+      if (noteRow != null && r >= noteRow) { if (cell) cell.s = { font: { name: F, sz: 9, color: { rgb: "6B7280" } } }; continue; }
       if (!cell) { cell = ws[ref] = { t: "s", v: "" }; }
       const h = heads[c];
       if (r === rg.s.r) {
@@ -1892,7 +2058,7 @@ function writeNice(wb) {
         s.alignment.horizontal = "right";
         if (/성과X|성과Y|실측X|실측Y|^X$|^Y$|X좌표|Y좌표/.test(h)) cell.z = "0.0000";
         else if (/△|Δ|연결교차|편차/.test(h)) cell.z = "0.0000";
-        else if (/정확도/.test(h)) cell.z = "0.000";
+        else if (/정확도|정밀도/.test(h)) cell.z = "0.000";
         else if (/위도|경도/.test(h)) cell.z = "0.0000000";
       } else s.alignment.horizontal = /소재지|주소|메모|사진|내용|비고/.test(h) ? "left" : "center";
       const v = String(cell.v ?? "");
@@ -1908,6 +2074,38 @@ function writeNice(wb) {
     ws["!rows"] = [{ hpt: 24 }];
   }
   return XLSX.write(wb, { bookType: "xlsx", type: "array", cellStyles: true });
+}
+// ───────── 📋 관측기록 : GNSS로 실측한 회차마다 관측 조건 한 줄 (지적위성측량관측부 작성 참고용) ─────────
+function obsRows(D = S) {
+  const out = [], ins = D.mode === "insp";
+  for (const p of D.points || []) {
+    const r = (D.recs || {})[p.id]; if (!r) continue;
+    const m = r.meas, all = r.measAll || (m ? [m] : []);
+    all.forEach((x, i) => {
+      if (x.src !== "GNSS") return; const o = x.obs || {};
+      out.push({ "기준점번호": p.formNo || p.no || p.name, "기준점명": p.name, "회차": i + 1, "채택": m && x.time === m.time && x.d === m.d ? "○" : "",
+        "관측시작": o.t0 || "", "관측종료": o.t1 || x.time, "관측시간(초)": o.dur ?? "", "평균한 초": x.n, "조건미달 대기(초)": o.wait ?? "", "규정조건": o.rule || "",
+        "측위": x.fix || "", "위성수 최소": o.satsMin ?? x.sats ?? "", "위성수 평균": o.satsAvg ?? "", "위성 기준": o.satsHi || "",
+        "PDOP 최대": o.pdopMax ?? "", "보정지연 최대(초)": o.ageMax ?? "", "수평정밀도 최대(m)": o.hMax ?? "", "수직정밀도 최대(m)": o.vMax ?? "",
+        "수신기": o.rcv || "", "지리원 아이디": o.ngii || "",
+        "측지계": o.datum || DATUM_NAME(p.datum), "원점": o.origin || p.originName, "지오이드": o.geoid || "",
+        "표고(m)": o.alt ?? "", "지오이드고(m)": o.sep ?? "", "타원체고(m)": o.hEll ?? "",
+        "실측X": x.X, "실측Y": x.Y, [ins ? "연결교차" : "편차"]: x.d });
+    });
+  }
+  return out;
+}
+function addObsSheet(wb, D = S) {
+  const rows = obsRows(D); if (!rows.length) return;
+  const ws = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.sheet_add_aoa(ws, [[]], { origin: rows.length + 1 });
+  XLSX.utils.sheet_add_aoa(ws, [["※ 규정 조건 : RTK 고정해 · 고도각 15° 이상 위성 5개 이상 · PDOP 3 미만 · 보정정보 지연 5초 미만 · 정밀도 수평 3cm·수직 5cm 이내 (GNSS에 의한 지적측량규정, 지적재조사측량규정)"],
+    ["※ 위성 기준 '15°↑'는 고도각 15° 이상이면서 신호가 잡힌 위성 수, '사용위성'은 수신기가 위치 계산에 쓴 위성 수(고도각 정보가 안 들어올 때). 빈칸은 수신기가 그 값을 내보내지 않은 것"],
+    ["※ 이 기록은 수신기가 보낸 NMEA로 만든 관측 조건 기록입니다. 원시 관측데이터(RINEX)는 수신기·제조사 소프트웨어에서 따로 보관합니다"],
+    ["※ 표고·지오이드고는 수신기가 보낸 값(수신기에 설정한 지오이드 기준)이고, 타원체고 = 표고 + 지오이드고. 연결교차는 수평(X·Y)만 비교하므로 높이는 판정에 쓰지 않습니다"],
+    ["※ 지역측지계(Bessel) 점은 세계측지계 위치를 표준 7변수로 바꿔 비교한 값이라 수 m 오차가 있을 수 있어 참고용입니다"]], { origin: rows.length + 2 });
+  ws["!noteRow"] = rows.length + 1;
+  XLSX.utils.book_append_sheet(wb, ws, "관측기록");
 }
 // ───────── 자동 백업 : N번 기록할 때마다 다운로드 폴더에 엑셀 한 개 ─────────
 function backupWorkbook(D = S, reason = "") {
@@ -1928,6 +2126,7 @@ function backupWorkbook(D = S, reason = "") {
   }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "백업");
   if (hist.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hist), "실측이력");
+  addObsSheet(wb, D);
   return writeNice(wb);
 }
 let bkSeq = 0;
@@ -1992,7 +2191,7 @@ async function buildZip() {
     if (p.noMap) { rows.push({ "기준점번호": p.no, "종류": p.type, "기준점": p.name, "소재지": p.addr, "X": isFinite(p.X) ? p.X : "", "Y": isFinite(p.Y) ? p.Y : "", "원점": "",
       "지난조사": p.prevStat, "지난조사일자": p.prevDate, "이번조사": `지도 없음(${p.reason})`, "조사일시": "", "메모": r.memo || "",
       "현장위도": "", "현장경도": "", "GPS정확도(m)": "", "사진수": 0, "사진파일": "" }); continue; }
-    rows.push({ "기준점번호": p.no, "종류": p.type, "기준점": p.name, "소재지": p.addr, "X": p.X, "Y": p.Y, "원점": p.originName,
+    rows.push({ "기준점번호": p.no, "종류": p.type, "기준점": p.name, "소재지": p.addr, "X": p.X, "Y": p.Y, "원점": `${p.datum === "Bessel" ? "지역 " : ""}${p.originName}`,
       "지난조사": p.prevStat, "지난조사일자": p.prevDate, "이번조사": p.noMap ? `지도 없음(${p.reason})` : r.status, "조사일시": r.time, "메모": r.memo,
       "현장위도": r.gps ? +r.gps.lat.toFixed(7) : "", "현장경도": r.gps ? +r.gps.lon.toFixed(7) : "", "GPS정확도(m)": r.gps ? +r.gps.acc.toFixed(3) : "",
       "실측X": r.meas ? r.meas.X : "", "실측Y": r.meas ? r.meas.Y : "", "ΔX(m)": r.meas ? r.meas.dX : "", "ΔY(m)": r.meas ? r.meas.dY : "",
@@ -2019,6 +2218,7 @@ async function buildZip() {
   XLSX.utils.book_append_sheet(wb, wsForm, (S.sheet || "원본양식").slice(0, 31));
   XLSX.utils.book_append_sheet(wb, ws, "조사상세");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sum), "상태별 집계");
+  addObsSheet(wb);
   const d = new Date(), stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
   const base = `${safeName(S.title)}_조사결과_${stamp}`;
   zip.file(`${base}.xlsx`, writeNice(wb));
@@ -2070,7 +2270,7 @@ $("btnWmsTest").onclick = () => {
   window.open("https://api.vworld.kr/req/wms?" + q.toString(), "_blank");
 };
 $("btnSaveSet").onclick = async () => {
-  set.origin = $("setOrigin").value; set.key = $("setKey").value.trim() || CFG.key; set.domain = $("setDomain").value.trim() || CFG.domain; set.tol = $("setTol").value.trim();
+  set.origin = $("setOrigin").value; set.datum = $("setDatum").value; set.key = $("setKey").value.trim() || CFG.key; set.domain = $("setDomain").value.trim() || CFG.domain; set.tol = $("setTol").value.trim();
   $("setKey").value = set.key;
   await DB.set("set", set); buildLayers(); toast("설정을 저장했습니다");
 };
@@ -2123,7 +2323,8 @@ $("btnReset").onclick = async () => {
     if (!set.domain) set.domain = CFG.domain;
   } catch (e) { toast("휴대폰 저장소를 열지 못했습니다 : " + e.message, 5000); }
   $("keyInfo").textContent = CFG.key ? (set.key === CFG.key ? "공용 키(config.js)를 쓰는 중입니다." : "이 휴대폰에서 직접 넣은 키를 쓰는 중입니다. 칸을 비우고 저장하면 공용 키(config.js)로 돌아갑니다.") : "config.js 공용 키가 없습니다.";
-  $("setOrigin").value = set.origin; $("setKey").value = set.key; $("setDomain").value = set.domain || ""; $("setTol").value = set.tol || ""; $("setBk").value = set.bk ?? "10"; $("setObs").value = set.obs || "10"; $("setSound").checked = set.sound !== false; $("gnFixOnly").checked = set.fixOnly !== false;
+  $("setOrigin").value = set.origin; $("setKey").value = set.key; $("setDomain").value = set.domain || ""; $("setTol").value = set.tol || ""; $("setBk").value = set.bk ?? "10"; $("setObs").value = set.obs || "10"; $("setSound").checked = set.sound !== false; $("gnFixOnly").checked = set.fixOnly !== false; $("setNgii").value = set.ngii || "";
+  $("setDatum").value = set.datum || ""; $("setGeoid").value = set.geoid || "rcv";
   buildLayers(); drawPoints(); fitAll(); startGPS();
   // 예전 버전에서 불러온 자료면 (폐기 점이 빠져 있음) 다시 불러오라고 알림
   if (S.rows && S.points.length < S.rows.length)
