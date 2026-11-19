@@ -752,6 +752,28 @@ textarea{width:100%;min-height:62px;border:1px solid var(--line);border-radius:1
 /* 전체 화면 패널 */
 .panel{position:fixed;inset:0;z-index:1200;background:var(--bg);display:none;flex-direction:column}
 .panel.on{display:flex}
+/* 지번 보기 (카메라) */
+#fabJb{bottom:calc(264px + env(safe-area-inset-bottom))}
+#pnCam{background:#0B1020;z-index:1300}
+#pnCam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#camTop{position:absolute;top:0;left:0;right:0;padding:calc(8px + env(safe-area-inset-top)) 10px 8px;display:flex;align-items:center;gap:8px;
+  background:linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,0));color:#fff}
+#camTop .ibtn{background:rgba(0,0,0,.35)}
+#camTop b{flex:1;font-size:16px}
+#camSrc{font-size:12px;background:rgba(0,0,0,.45);border-radius:14px;padding:4px 10px}
+#camMsg{position:absolute;top:40%;left:16px;right:16px;text-align:center;color:#C9D1E8;font-size:14px;line-height:1.6}
+#camArrow{position:absolute;left:50%;top:38%;width:64px;height:64px;margin:-32px 0 0 -32px;display:none;transition:transform .25s}
+#camCard{position:absolute;left:10px;right:10px;bottom:calc(12px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);border-radius:16px;
+  padding:14px 16px 12px;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+#jbBig{font-size:30px;font-weight:800;color:var(--navy);line-height:1.2;word-break:keep-all}
+#jbBig .jm{display:inline-block;font-size:15px;font-weight:700;background:var(--navy);color:#fff;border-radius:6px;padding:2px 8px;margin-left:8px;vertical-align:5px}
+#jbAddr{font-size:14px;color:var(--ink);margin-top:4px}
+#jbMeta{font-size:12.5px;color:var(--mut);margin-top:6px;line-height:1.55}
+#jbWarn{font-size:13.5px;font-weight:700;margin-top:6px;line-height:1.5}
+#jbWarn.ok{color:#2E9E6B}#jbWarn.bad{color:#D9480F}
+#camCard .row{margin:10px 0 2px}
+#camCard .btn{padding:9px 6px}
+.jbpop b{font-size:15px;color:var(--navy)}
 .phead{height:52px;padding:0 8px;padding-top:env(safe-area-inset-top);background:var(--navy);color:#fff;display:flex;align-items:center;gap:6px}
 .phead h3{margin:0;font-size:17px;flex:1}
 .pbody{flex:1;overflow:auto;padding:14px 16px calc(24px + env(safe-area-inset-bottom))}
@@ -790,6 +812,7 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
 </div>
 <div id="map"></div>
 <div id="gps">GPS 끄짐</div>
+<button class="fab" id="fabJb" aria-label="지번 보기">📷</button>
 <button class="fab" id="fabAll" aria-label="전체 보기">전체</button>
 <button class="fab" id="fabLayer" aria-label="지도 종류">🗺️</button>
 <div id="legend">
@@ -929,7 +952,7 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
       <p class="help">이 휴대폰에 저장된 모든 작업(점·조사기록·사진)을 지웁니다. 작업 하나만 지우려면 위 작업 목록의 '삭제'를 쓰세요.</p>
       <div class="row"><button class="btn" id="btnReset" style="color:var(--red)">전체 지우기</button></div>
     </div>
-    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.12 13:37</p>
+    <p class="help" style="text-align:center">모든 자료는 이 휴대폰 안에만 저장됩니다. 서버로 보내지 않습니다.<br>프로그램 버전 11.20 07:40</p>
   </div>
 </div>
 
@@ -950,6 +973,19 @@ select,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8p
     <p class="help" id="mnHelp"></p>
     <div class="map2" style="margin:6px 0 10px"><span>점 찾기</span><input type="text" id="mnNo" inputmode="numeric" autocomplete="off" placeholder="점 번호 → 그 줄로 이동"></div>
     <div id="mnGrid"></div>
+  </div>
+</div>
+<div class="panel" id="pnCam">
+  <video id="camVid" playsinline muted autoplay></video>
+  <div id="camMsg"></div>
+  <svg id="camArrow" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="rgba(0,0,0,.35)"/><path d="M32 8 L46 40 L32 33 L18 40 Z" fill="#FFD43B" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>
+  <div id="camTop"><button class="ibtn" id="camClose">←</button><b>📷 지번 보기</b><span id="camSrc"></span></div>
+  <div id="camCard">
+    <div id="jbBig">위치 찾는 중…</div>
+    <div id="jbAddr"></div>
+    <div id="jbWarn"></div>
+    <div id="jbMeta"></div>
+    <div class="row"><button class="btn" id="jbMap">🗺️ 지도에서 보기</button><button class="btn" id="jbCopy">주소 복사</button></div>
   </div>
 </div>
 <div id="toast"></div>
@@ -1279,6 +1315,177 @@ $("fabMe").onclick = () => {
   if (!me) { toast("아직 내 위치를 못 찾았습니다"); return; }
   map.setView([me.lat, me.lon], Math.max(map.getZoom(), 17)); follow = true; toast("내 위치를 따라갑니다 (지도를 밀면 해제)");
 };
+
+// ───────── 📷 지번 보기 : 카메라 + 지금 서 있는 필지 (브이월드 연속지적도 LP_PA_CBND_BUBUN) ─────────
+// 필지 모양을 받아 두고, 내 위치가 받아 둔 필지 안에 있으면 다시 묻지 않음 (요청 수 절약)
+const JB = { on: false, stream: null, cache: [], busy: false, lastReq: 0, cur: null, err: "", heading: null, near: null };
+const jbLayer = L.layerGroup().addTo(map);
+// 브이월드 데이터 API는 JSONP(스크립트 태그)로 부름 : 다른 주소에서 fetch로 부르면 막힘
+let vwSeq = 0;
+function vwData(params, ms = 9000) {
+  return new Promise((res, rej) => {
+    const cb = "__vw" + (++vwSeq), s = document.createElement("script");
+    const q = new URLSearchParams(Object.assign({ service: "data", version: "2.0", request: "getfeature", format: "json", errorformat: "json",
+      geometry: "true", attribute: "true", crs: "EPSG:4326", key: set.key.trim(), domain: wmsDomain(), callback: cb }, params));
+    const t = setTimeout(() => { window[cb] = () => delete window[cb]; s.remove(); rej(new Error("브이월드 응답이 없습니다")); }, ms);
+    window[cb] = (d) => { clearTimeout(t); delete window[cb]; s.remove(); res(d); };
+    s.onerror = () => { clearTimeout(t); delete window[cb]; s.remove(); rej(new Error("브이월드에 연결하지 못했습니다")); };
+    s.src = "https://api.vworld.kr/req/data?" + q.toString(); document.head.appendChild(s);
+  });
+}
+// 한 점의 필지 받기 → {props, polys:[[ring,...],...]} (없으면 null)
+async function jbFetch(lat, lon) {
+  const d = await vwData({ data: "LP_PA_CBND_BUBUN", geomfilter: `POINT(${lon.toFixed(7)} ${lat.toFixed(7)})`, size: "1" });
+  const r = d && d.response;
+  if (!r) throw new Error("브이월드 응답을 읽지 못했습니다");
+  if (r.status === "NOT_FOUND") return null;
+  if (r.status !== "OK") { const e = r.error || {}; throw new Error(`브이월드가 거절했습니다 : ${e.code || r.status}${e.text ? " (" + e.text + ")" : ""}`); }
+  const f = r.result && r.result.featureCollection && r.result.featureCollection.features && r.result.featureCollection.features[0];
+  if (!f) return null;
+  const g = f.geometry || {}, polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
+  return { props: f.properties || {}, polys, geo: f };
+}
+// 평면 근사 (수십 m 안쪽 거리 계산용)
+const jbXY = (lat0, lon0) => (lon, lat) => [(lon - lon0) * 111320 * Math.cos(lat0 * Math.PI / 180), (lat - lat0) * 110574];
+function jbInside(x, y, ring) {   // ring : [[x,y],...] (평면)
+  let c = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c;
+  }
+  return c;
+}
+// 이 필지 안에 있는지, 가장 가까운 경계까지 거리·방향(북쪽 0°, 시계방향)
+function jbTest(par, lat, lon) {
+  const f = jbXY(lat, lon); let inside = false, best = Infinity, bx = 0, by = 0;
+  for (const poly of par.polys) {
+    const rings = poly.map(r => r.map(c => f(c[0], c[1])));
+    if (jbInside(0, 0, rings[0]) && !rings.slice(1).some(h => jbInside(0, 0, h))) inside = true;
+    for (const r of rings) for (let i = 1; i < r.length; i++) {
+      const [x1, y1] = r[i - 1], [x2, y2] = r[i], dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy;
+      const t = L2 ? Math.max(0, Math.min(1, -(x1 * dx + y1 * dy) / L2)) : 0, px = x1 + t * dx, py = y1 + t * dy, d = Math.hypot(px, py);
+      if (d < best) { best = d; bx = px; by = py; }
+    }
+  }
+  return { inside, dist: best, brg: (Math.atan2(bx, by) * 180 / Math.PI + 360) % 360 };
+}
+const DIR8 = ["북", "북동", "동", "남동", "남", "남서", "서", "북서"];
+// 지번 글자 나누기 : "552-3대" → 번지 "552-3", 지목 "대"
+function jbParts(p) {
+  const jb = String(p.jibun || "").trim(), m = jb.match(/^(산?\s*[\d-]+)\s*([가-힣]*)$/);
+  const num = m ? m[1].replace(/\s+/g, "") : jb, jm = m ? m[2] : "";
+  let addr = String(p.addr || "").trim();
+  if (addr && num && !addr.endsWith(num)) addr += " " + num;
+  const toks = addr.replace(new RegExp("\\s*" + num.replace(/[-]/g, "\\-") + "$"), "").split(/\s+/).filter(Boolean);
+  const place = toks.length ? toks[toks.length - 1] : "";
+  return { num, jm, addr: addr || (p.pnu ? "PNU " + p.pnu : ""), big: (place ? place + " " : "") + num };
+}
+function jbDraw(par) {
+  jbLayer.clearLayers();
+  if (!par) return;
+  L.geoJSON(par.geo, { style: { color: "#FFD43B", weight: 4, fillColor: "#FFD43B", fillOpacity: .18 }, interactive: false }).addTo(jbLayer);
+}
+// 위치가 들어올 때마다 : 받아 둔 필지 안이면 그대로, 아니면 브이월드에 물어봄 (2.5초에 한 번까지)
+async function jbTick(p) {
+  if (!JB.on || !p) return;
+  const hit = JB.cache.find(c => jbTest(c, p.lat, p.lon).inside);
+  if (hit) { JB.cur = hit; JB.err = ""; jbShow(p); return; }
+  jbShow(p);
+  if (JB.busy || Date.now() - JB.lastReq < 2500) return;
+  if (!set.key.trim()) { JB.err = "브이월드 키가 없습니다 (메뉴 → 설정)"; jbShow(p); return; }
+  JB.busy = true; JB.lastReq = Date.now();
+  try {
+    const par = await jbFetch(p.lat, p.lon);
+    JB.err = par ? "" : "이 자리에는 필지 정보가 없습니다";
+    if (par) { JB.cache = [par, ...JB.cache.filter(c => c.props.pnu !== par.props.pnu)].slice(0, 30); JB.cur = par; jbDraw(par); }
+  } catch (e) { JB.err = e.message; }
+  JB.busy = false; if (JB.on && me) jbShow(me);
+}
+function jbShow(p) {
+  const src = p.src === "gnss" ? `${FIXNAME[p.fix] || "GNSS"} ±${fmtAcc(p.acc)}` : `휴대폰 GPS ±${fmtAcc(p.acc)}`;
+  $("camSrc").textContent = src;
+  const par = JB.cur, w = $("jbWarn"); w.className = ""; $("camArrow").style.display = "none"; JB.near = null;
+  if (!par) {
+    $("jbBig").textContent = JB.busy || !JB.err ? "필지 찾는 중…" : "지번을 못 찾았습니다";
+    $("jbAddr").textContent = ""; w.textContent = JB.err || ""; if (JB.err) w.className = "bad"; $("jbMeta").textContent = ""; return;
+  }
+  const t = jbParts(par.props), r = jbTest(par, p.lat, p.lon), acc = p.acc || 0;
+  $("jbBig").innerHTML = esc(t.big) + (t.jm ? `<span class="jm">${esc(t.jm)}</span>` : "");
+  $("jbAddr").textContent = t.addr;
+  if (!r.inside) { w.className = "bad"; w.textContent = "⚠ 이 필지 밖으로 나왔습니다. 옆 필지를 찾는 중…" + (JB.err ? " (" + JB.err + ")" : ""); }
+  else {
+    const dir = DIR8[Math.round(r.brg / 45) % 8];
+    JB.near = r;
+    if (r.dist <= Math.max(acc, 0.05)) { w.className = "bad"; w.textContent = `⚠ 경계까지 ${r.dist.toFixed(r.dist < 10 ? 1 : 0)}m (${dir}쪽) — 위치 오차(±${fmtAcc(acc)})보다 가까워 옆 필지일 수 있습니다`; }
+    else { w.className = "ok"; w.textContent = `가장 가까운 경계 : ${dir}쪽 ${r.dist.toFixed(r.dist < 10 ? 1 : 0)}m`; }
+    jbArrow();
+  }
+  const pr = par.props, jiga = +pr.jiga;
+  $("jbMeta").innerHTML = (jiga ? `공시지가 ㎡당 ${jiga.toLocaleString()}원${pr.gosi_year ? ` (${esc(pr.gosi_year)}년${pr.gosi_month ? " " + esc(+pr.gosi_month) + "월" : ""})` : ""}<br>` : "")
+    + `브이월드 연속지적도 기준 · 참고용 (경계 확인은 지적측량으로)`;
+}
+// 가장 가까운 경계 쪽 화살표 : 휴대폰 방향(나침반)을 알 때만
+function jbArrow() {
+  const a = $("camArrow");
+  if (!JB.near || JB.heading == null || !JB.stream) { a.style.display = "none"; return; }
+  a.style.display = "block"; a.style.transform = `rotate(${(JB.near.brg - JB.heading + 360) % 360}deg)`;
+}
+function jbOrient(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === "number") h = e.webkitCompassHeading;          // 아이폰
+  else if (e.absolute && typeof e.alpha === "number") h = (360 - e.alpha) % 360;       // 안드로이드
+  if (h == null) return;
+  const so = (screen.orientation && screen.orientation.angle) || 0;
+  JB.heading = (h + so) % 360; jbArrow();
+}
+async function jbOpen() {
+  if (!set.key.trim()) { toast("브이월드 키가 없습니다. 메뉴 → 설정에서 확인해 주세요"); return; }
+  JB.on = true; JB.cur = null; JB.err = ""; JB.lastReq = 0; JB.heading = null;
+  $("pnCam").classList.add("on"); openLayer("cam");
+  $("camMsg").textContent = "카메라를 켜는 중…";
+  if (me) jbTick(me); else { $("jbBig").textContent = "위치 찾는 중…"; $("jbAddr").textContent = ""; $("jbWarn").textContent = ""; $("jbMeta").textContent = ""; }
+  measFns.add(jbTick);
+  window.addEventListener("deviceorientationabsolute", jbOrient); window.addEventListener("deviceorientation", jbOrient);
+  try {
+    if (typeof DeviceOrientationEvent !== "undefined" && DeviceOrientationEvent.requestPermission) DeviceOrientationEvent.requestPermission().catch(() => {});
+  } catch (e) {}
+  try {
+    const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+    if (!JB.on) { st.getTracks().forEach(t => t.stop()); return; }
+    JB.stream = st; $("camVid").srcObject = st; $("camMsg").textContent = ""; jbArrow();
+  } catch (e) {
+    $("camMsg").innerHTML = "카메라를 켜지 못했습니다" + (e && e.name === "NotAllowedError" ? " (카메라 권한을 허용해 주세요)" : "") + "<br>지번은 그대로 보여 드립니다";
+  }
+}
+function jbClose() {
+  JB.on = false; measFns.delete(jbTick);
+  window.removeEventListener("deviceorientationabsolute", jbOrient); window.removeEventListener("deviceorientation", jbOrient);
+  if (JB.stream) { JB.stream.getTracks().forEach(t => t.stop()); JB.stream = null; }
+  $("camVid").srcObject = null; $("pnCam").classList.remove("on");
+}
+$("fabJb").onclick = jbOpen;
+$("camClose").onclick = () => closeLayer("cam");
+$("jbMap").onclick = () => {
+  const par = JB.cur; closeLayer("cam", () => {
+    if (!par) return; jbDraw(par); follow = false;
+    map.fitBounds(L.geoJSON(par.geo).getBounds(), { maxZoom: 19, padding: [40, 40] });
+  });
+};
+$("jbCopy").onclick = async () => {
+  if (!JB.cur) return; const t = jbParts(JB.cur.props).addr;
+  try { await navigator.clipboard.writeText(t); toast("복사했습니다 : " + t); } catch (e) { toast(t, 5000); }
+};
+// 지도에서 길게 누르면 그 자리 지번
+map.on("contextmenu", async (e) => {
+  if (!set.key.trim()) return;
+  const { lat, lng } = e.latlng, pop = L.popup({ className: "jbpop" }).setLatLng(e.latlng).setContent("지번 찾는 중…").openOn(map);
+  try {
+    const par = await jbFetch(lat, lng);
+    if (!par) { pop.setContent("이 자리에는 필지 정보가 없습니다"); return; }
+    const t = jbParts(par.props); jbDraw(par);
+    pop.setContent(`<b>${esc(t.num)}${t.jm ? " " + esc(t.jm) : ""}</b><br>${esc(t.addr)}`);
+  } catch (err) { pop.setContent(esc(err.message)); }
+});
 map.on("dragstart", () => follow = false);
 
 // ───────── 점 카드 ─────────
@@ -1511,7 +1718,7 @@ map.on("click", () => { if (cur) closePoint(); });
 // 카드·목록·메뉴를 열 때마다 방문 기록을 하나씩 쌓고, 뒤로 버튼이 오면 맨 위 창만 닫음.
 // 아무 창도 없을 때는 "한 번 더 누르면 닫힙니다" 안내 후 2초 안에 다시 눌러야 나감.
 const layers = []; let lastBack = 0, afterPop = null;
-const HIDE = { sheet: hideSheet, menu: () => $("pnMenu").classList.remove("on"), list: () => $("pnList").classList.remove("on"), manual: () => $("pnManual").classList.remove("on") };
+const HIDE = { sheet: hideSheet, menu: () => $("pnMenu").classList.remove("on"), list: () => $("pnList").classList.remove("on"), manual: () => $("pnManual").classList.remove("on"), cam: () => jbClose() };
 function openLayer(name) { if (layers.includes(name)) return; layers.push(name); history.pushState({ d: layers.length }, ""); }
 function closeLayer(name, after) {
   const i = layers.indexOf(name);
@@ -2370,7 +2577,7 @@ $("btnWmsTest").onclick = () => {
 };
 $("btnSaveSet").onclick = async () => {
   set.origin = $("setOrigin").value; set.datum = $("setDatum").value; set.key = $("setKey").value.trim() || CFG.key; set.domain = $("setDomain").value.trim() || CFG.domain; set.tol = $("setTol").value.trim();
-  $("setKey").value = set.key;
+  set.cfgKey = CFG.key; set.cfgDomain = CFG.domain; $("setKey").value = set.key;
   await DB.set("set", set); buildLayers(); toast("설정을 저장했습니다");
 };
 $("projList").onclick = async e => {
@@ -2525,6 +2732,12 @@ $("btnReset").onclick = async () => {
     }
     renderProjects();
     const st = await DB.get("set"); if (st) set = { ...set, ...st };
+    // config.js 공용 키가 바뀌었으면 (예전 키를 저장해 둔 휴대폰도) 새 공용 키로 바꿈. 직접 넣은 다른 키는 그대로 둠
+    if (CFG.key && set.cfgKey !== CFG.key) {
+      if (!set.key || !set.cfgKey || set.key === set.cfgKey) set.key = CFG.key;
+      if (CFG.domain && (!set.domain || !set.cfgKey || set.domain === set.cfgDomain)) set.domain = CFG.domain;
+      set.cfgKey = CFG.key; set.cfgDomain = CFG.domain; DB.set("set", set);
+    }
     if (!set.key) set.key = CFG.key;
     if (!set.domain) set.domain = CFG.domain;
   } catch (e) { toast("휴대폰 저장소를 열지 못했습니다 : " + e.message, 5000); }
