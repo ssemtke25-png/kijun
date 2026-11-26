@@ -1,0 +1,43 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Copy web app into APK assets
+        run: |
+          mkdir -p android/app/src/main/assets
+          rsync -a --exclude='.git' --exclude='.github' --exclude='android' --exclude='README*' ./ android/app/src/main/assets/
+          ls android/app/src/main/assets
+
+      - name: Build APK
+        working-directory: android
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          HOST="$OWNER.github.io"
+          if [ "${REPO,,}" = "$HOST" ]; then BASE="/"; else BASE="/$REPO/"; fi
+          echo "web = https://$HOST$BASE"
+          gradle assembleRelease -PwebHost="$HOST" -PwebBase="$BASE" -PverCode=${{ github.run_number }}
+          mv app/build/outputs/apk/release/*.apk "app/build/outputs/apk/release/kijun-${{ github.run_number }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kijun-apk-${{ github.run_number }}
+          path: android/app/build/outputs/apk/release/*.apk
